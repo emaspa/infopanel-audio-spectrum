@@ -101,6 +101,8 @@ ContentWidth = 1.0
 CenterOut = false
 Gain = 1.5
 EdgeBoost = 5
+NoiseFloor = 0
+TrimBands = 0
 ServerPort = 52400
 FollowWaveLink = false
 ```
