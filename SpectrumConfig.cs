@@ -18,26 +18,31 @@ namespace InfoPanel.AudioSpectrum
         public static string FilePath => ConfigFilePath;
 
         // Audio device (empty = default, or partial name match e.g. "Speakers" or "Realtek")
-        public string AudioDevice { get; private set; } = "";
+        public string AudioDevice { get; set; } = "";
 
         // Spectrum settings
-        public int BandCount { get; private set; } = 32;
-        public int ImageWidth { get; private set; } = 400;
-        public int ImageHeight { get; private set; } = 150;
-        public SpectrumStyle Style { get; private set; } = SpectrumStyle.Bars;
-        public ColorScheme Scheme { get; private set; } = ColorScheme.Neon;
-        public string CustomColor1 { get; private set; } = "#00FF80";
-        public string CustomColor2 { get; private set; } = "#0080FF";
-        public string BackgroundColor { get; private set; } = "#FF000000";
-        public float BarSpacing { get; private set; } = 0.3f;
-        public float CornerRadius { get; private set; } = 4f;
-        public bool ShowPeaks { get; private set; } = true;
-        public bool ShowReflection { get; private set; } = false;
-        public float Brightness { get; private set; } = 1.0f;
-        public float Smoothing { get; private set; } = 0.3f;
-        public float PeakDecay { get; private set; } = 0.02f;
-        public int ServerPort { get; private set; } = 52400;
-        public int RefreshIntervalMs { get; private set; } = 5000;
+        public int BandCount { get; set; } = 32;
+        public int ImageWidth { get; set; } = 400;
+        public int ImageHeight { get; set; } = 150;
+        public SpectrumStyle Style { get; set; } = SpectrumStyle.Bars;
+        public ColorScheme Scheme { get; set; } = ColorScheme.Neon;
+        public string CustomColor1 { get; set; } = "#00FF80";
+        public string CustomColor2 { get; set; } = "#0080FF";
+        public string BackgroundColor { get; set; } = "#FF000000";
+        public float BarSpacing { get; set; } = 0.3f;
+        public float CornerRadius { get; set; } = 4f;
+        public bool ShowPeaks { get; set; } = true;
+        public bool ShowReflection { get; set; } = false;
+        public float Brightness { get; set; } = 1.0f;
+        public float Smoothing { get; set; } = 0.3f;
+        public float PeakDecay { get; set; } = 0.02f;
+        public SpectrumAlignment Alignment { get; set; } = SpectrumAlignment.Left;
+        public float ContentWidth { get; set; } = 1.0f;
+        public bool CenterOut { get; set; } = false;
+        public float Gain { get; set; } = 1.5f;
+        public float EdgeBoost { get; set; } = 5f;
+        public int ServerPort { get; set; } = 52400;
+        public int RefreshIntervalMs { get; set; } = 5000;
 
         public void Load()
         {
@@ -71,6 +76,11 @@ namespace InfoPanel.AudioSpectrum
             SetDefault("Brightness", "1.0");
             SetDefault("Smoothing", "0.3");
             SetDefault("PeakDecay", "0.02");
+            SetDefault("Alignment", "Left");
+            SetDefault("ContentWidth", "1.0");
+            SetDefault("CenterOut", "false");
+            SetDefault("Gain", "1.5");
+            SetDefault("EdgeBoost", "5");
             SetDefault("ServerPort", "52400");
             SetDefault("RefreshIntervalMs", "5000");
 
@@ -132,6 +142,11 @@ namespace InfoPanel.AudioSpectrum
             Brightness = GetFloat("Brightness", 1.0f);
             Smoothing = GetFloat("Smoothing", 0.3f);
             PeakDecay = GetFloat("PeakDecay", 0.02f);
+            Alignment = GetEnum("Alignment", SpectrumAlignment.Left);
+            ContentWidth = GetFloat("ContentWidth", 1.0f);
+            CenterOut = GetBool("CenterOut", false);
+            Gain = GetFloat("Gain", 1.5f);
+            EdgeBoost = GetFloat("EdgeBoost", 5f);
             ServerPort = GetInt("ServerPort", 52400);
             RefreshIntervalMs = GetInt("RefreshIntervalMs", 5000);
 
@@ -144,6 +159,9 @@ namespace InfoPanel.AudioSpectrum
             Brightness = Math.Clamp(Brightness, 0.1f, 2.0f);
             Smoothing = Math.Clamp(Smoothing, 0.05f, 0.95f);
             PeakDecay = Math.Clamp(PeakDecay, 0.005f, 0.1f);
+            ContentWidth = Math.Clamp(ContentWidth, 0.1f, 1.0f);
+            Gain = Math.Clamp(Gain, 0.5f, 5.0f);
+            EdgeBoost = Math.Clamp(EdgeBoost, 1f, 15f);
             ServerPort = Math.Clamp(ServerPort, 1024, 65535);
             RefreshIntervalMs = Math.Clamp(RefreshIntervalMs, 1000, 60000);
         }
@@ -176,6 +194,38 @@ namespace InfoPanel.AudioSpectrum
         {
             var val = _iniData?[SECTION][key];
             return Enum.TryParse(val, true, out T result) ? result : defaultValue;
+        }
+
+        public void Save()
+        {
+            _iniData ??= new IniData();
+
+            _iniData[SECTION]["AudioDevice"] = AudioDevice;
+            _iniData[SECTION]["BandCount"] = BandCount.ToString();
+            _iniData[SECTION]["ImageWidth"] = ImageWidth.ToString();
+            _iniData[SECTION]["ImageHeight"] = ImageHeight.ToString();
+            _iniData[SECTION]["Style"] = Style.ToString();
+            _iniData[SECTION]["ColorScheme"] = Scheme.ToString();
+            _iniData[SECTION]["CustomColor1"] = CustomColor1;
+            _iniData[SECTION]["CustomColor2"] = CustomColor2;
+            _iniData[SECTION]["BackgroundColor"] = BackgroundColor;
+            _iniData[SECTION]["BarSpacing"] = BarSpacing.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            _iniData[SECTION]["CornerRadius"] = CornerRadius.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            _iniData[SECTION]["ShowPeaks"] = ShowPeaks.ToString().ToLower();
+            _iniData[SECTION]["ShowReflection"] = ShowReflection.ToString().ToLower();
+            _iniData[SECTION]["Brightness"] = Brightness.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            _iniData[SECTION]["Smoothing"] = Smoothing.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            _iniData[SECTION]["PeakDecay"] = PeakDecay.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            _iniData[SECTION]["Alignment"] = Alignment.ToString();
+            _iniData[SECTION]["ContentWidth"] = ContentWidth.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            _iniData[SECTION]["CenterOut"] = CenterOut.ToString().ToLower();
+            _iniData[SECTION]["Gain"] = Gain.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            _iniData[SECTION]["EdgeBoost"] = EdgeBoost.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            _iniData[SECTION]["ServerPort"] = ServerPort.ToString();
+            _iniData[SECTION]["RefreshIntervalMs"] = RefreshIntervalMs.ToString();
+
+            var parser = new FileIniDataParser();
+            parser.WriteFile(ConfigFilePath, _iniData);
         }
 
         public SKColor ParseColor(string colorStr)

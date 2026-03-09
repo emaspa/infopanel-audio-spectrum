@@ -19,7 +19,15 @@ namespace InfoPanel.AudioSpectrum
         Rainbow,
         Ocean,
         Monochrome,
+        Classic,
         Custom
+    }
+
+    internal enum SpectrumAlignment
+    {
+        Left,
+        Center,
+        Right
     }
 
     internal class SpectrumRenderer : IDisposable
@@ -39,6 +47,10 @@ namespace InfoPanel.AudioSpectrum
         public bool ShowPeaks { get; set; } = true;
         public bool ShowReflection { get; set; } = false;
         public float Brightness { get; set; } = 1.0f;
+        public SpectrumAlignment Alignment { get; set; } = SpectrumAlignment.Left;
+        public float ContentWidth { get; set; } = 1.0f; // 0-1, fraction of image width used by spectrum
+        public bool CenterOut { get; set; } = false;
+        public float EdgeBoost { get; set; } = 5f; // multiplier at edges for CenterOut mode
 
         public byte[]? Render(float[] bands, float[] peaks, int width, int height)
         {
@@ -55,30 +67,67 @@ namespace InfoPanel.AudioSpectrum
             using var canvas = new SKCanvas(_bitmap);
             canvas.Clear(BackgroundColor);
 
+            // Calculate content area and alignment offset
+            float contentW = width * Math.Clamp(ContentWidth, 0.1f, 1.0f);
+            float offsetX = Alignment switch
+            {
+                SpectrumAlignment.Center => (width - contentW) / 2f,
+                SpectrumAlignment.Right => width - contentW,
+                _ => 0f
+            };
+
+            if (offsetX != 0)
+            {
+                canvas.Save();
+                canvas.Translate(offsetX, 0);
+            }
+
+            // Reorder bands for center-out layout (low freq in center, high on edges)
+            if (CenterOut && bands.Length > 1)
+            {
+                bands = ReorderCenterOut(bands);
+                peaks = ReorderCenterOut(peaks);
+
+                // Boost edge bars to compensate for high-freq energy falloff
+                int center = bands.Length / 2;
+                for (int i = 0; i < bands.Length; i++)
+                {
+                    float distRatio = MathF.Abs(i - center) / (float)center;
+                    float edgeBoost = 1f + distRatio * (EdgeBoost - 1f);
+                    bands[i] = MathF.Min(100, bands[i] * edgeBoost);
+                    peaks[i] = MathF.Min(100, peaks[i] * edgeBoost);
+                }
+            }
+
             float drawHeight = ShowReflection ? height * 0.6f : height;
 
             switch (Style)
             {
                 case SpectrumStyle.Bars:
-                    DrawBars(canvas, bands, peaks, width, drawHeight, false);
+                    DrawBars(canvas, bands, peaks, contentW, drawHeight, false);
                     break;
                 case SpectrumStyle.Rounded:
-                    DrawBars(canvas, bands, peaks, width, drawHeight, true);
+                    DrawBars(canvas, bands, peaks, contentW, drawHeight, true);
                     break;
                 case SpectrumStyle.Wave:
-                    DrawWave(canvas, bands, width, drawHeight);
+                    DrawWave(canvas, bands, contentW, drawHeight);
                     break;
                 case SpectrumStyle.Dots:
-                    DrawDots(canvas, bands, peaks, width, drawHeight);
+                    DrawDots(canvas, bands, peaks, contentW, drawHeight);
                     break;
                 case SpectrumStyle.Mirror:
-                    DrawMirror(canvas, bands, peaks, width, height);
+                    DrawMirror(canvas, bands, peaks, contentW, height);
                     break;
             }
 
             if (ShowReflection && Style != SpectrumStyle.Mirror)
             {
-                DrawReflection(canvas, width, drawHeight, height);
+                DrawReflection(canvas, contentW, drawHeight, height);
+            }
+
+            if (offsetX != 0)
+            {
+                canvas.Restore();
             }
 
             using var image = SKImage.FromBitmap(_bitmap);
@@ -107,18 +156,36 @@ namespace InfoPanel.AudioSpectrum
                     Color = ApplyBrightness(color)
                 };
 
-                // Gradient fill
-                using var shader = SKShader.CreateLinearGradient(
-                    new SKPoint(x, height),
-                    new SKPoint(x, y),
-                    [ApplyBrightness(GetBandColor(i, count, 0.2f)), ApplyBrightness(color)],
-                    [0f, 1f],
-                    SKShaderTileMode.Clamp);
+                // Gradient fill - Classic: green->yellow->red within each bar
+                SKShader shader;
+                if (Scheme == ColorScheme.Classic)
+                {
+                    shader = SKShader.CreateLinearGradient(
+                        new SKPoint(x, height),
+                        new SKPoint(x, y),
+                        [
+                            ApplyBrightness(new SKColor(0, 200, 0)),
+                            ApplyBrightness(new SKColor(0, 255, 0)),
+                            ApplyBrightness(new SKColor(255, 255, 0)),
+                            ApplyBrightness(new SKColor(255, 0, 0))
+                        ],
+                        [0f, 0.3f, 0.7f, 1f],
+                        SKShaderTileMode.Clamp);
+                }
+                else
+                {
+                    shader = SKShader.CreateLinearGradient(
+                        new SKPoint(x, height),
+                        new SKPoint(x, y),
+                        [ApplyBrightness(GetBandColor(i, count, 0.2f)), ApplyBrightness(color)],
+                        [0f, 1f],
+                        SKShaderTileMode.Clamp);
+                }
                 paint.Shader = shader;
 
                 var rect = new SKRect(x, y, x + barWidth, height);
 
-                if (rounded && CornerRadius > 0)
+                if (rounded)
                 {
                     canvas.DrawRoundRect(rect, CornerRadius, CornerRadius, paint);
                 }
@@ -127,14 +194,19 @@ namespace InfoPanel.AudioSpectrum
                     canvas.DrawRect(rect, paint);
                 }
 
+                shader.Dispose();
+
                 // Peak indicator
                 if (ShowPeaks && peaks[i] > 2)
                 {
                     float peakY = height - (peaks[i] / 100f) * height;
+                    var peakColor = Scheme == ColorScheme.Classic
+                        ? ApplyBrightness(new SKColor(255, 0, 0))
+                        : ApplyBrightness(color).WithAlpha(200);
                     using var peakPaint = new SKPaint
                     {
                         IsAntialias = true,
-                        Color = ApplyBrightness(color).WithAlpha(200),
+                        Color = peakColor,
                         StrokeWidth = 2,
                         Style = SKPaintStyle.Fill
                     };
@@ -407,9 +479,33 @@ namespace InfoPanel.AudioSpectrum
                     new SKColor(0, 50, 120), new SKColor(0, 150, 200), new SKColor(0, 220, 180)),
                 ColorScheme.Monochrome => InterpolateColors(position, intensity,
                     new SKColor(80, 80, 80), new SKColor(180, 180, 180), new SKColor(255, 255, 255)),
+                ColorScheme.Classic => GetClassicColor(intensity),
                 ColorScheme.Custom => InterpolateColor(CustomColor1, CustomColor2, position),
                 _ => new SKColor(0, 255, 128)
             };
+        }
+
+        private static SKColor GetClassicColor(float intensity)
+        {
+            // Classic EQ: green at low levels, yellow at mid, red at peak
+            if (intensity < 0.6f)
+            {
+                // Green to yellow
+                float t = intensity / 0.6f;
+                return new SKColor(
+                    (byte)(0 + 255 * t),
+                    (byte)(200 + 55 * t),
+                    0);
+            }
+            else
+            {
+                // Yellow to red
+                float t = (intensity - 0.6f) / 0.4f;
+                return new SKColor(
+                    255,
+                    (byte)(255 * (1f - t)),
+                    0);
+            }
         }
 
         private SKColor[] GetGradientColors(int count)
@@ -471,6 +567,28 @@ namespace InfoPanel.AudioSpectrum
                 (byte)MathF.Min(255, color.Blue * Brightness),
                 color.Alpha
             );
+        }
+
+        private static float[] ReorderCenterOut(float[] input)
+        {
+            int n = input.Length;
+            var result = new float[n];
+            int mid = (n - 1) / 2;
+
+            // Place band 0 (lowest freq) at center, fan outward symmetrically
+            for (int i = 0; i < n; i++)
+            {
+                int target;
+                if (i % 2 == 0)
+                    target = mid - i / 2;
+                else
+                    target = mid + 1 + i / 2;
+
+                if (target >= 0 && target < n)
+                    result[target] = input[i];
+            }
+
+            return result;
         }
 
         public void Dispose()

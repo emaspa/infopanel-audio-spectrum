@@ -9,21 +9,26 @@ namespace InfoPanel.AudioSpectrum
 
         private readonly float[] _smoothedBands;
         private readonly float[] _peakBands;
-        private readonly float _smoothingFactor;
-        private readonly float _peakDecay;
+        private float _smoothingFactor;
+        private float _peakDecay;
+        private float _gain;
 
         public int BandCount { get; }
+        public float Smoothing { get => _smoothingFactor; set => _smoothingFactor = value; }
+        public float PeakDecay { get => _peakDecay; set => _peakDecay = value; }
+        public float Gain { get => _gain; set => _gain = value; }
         public float[] SmoothedBands => _smoothedBands;
         public float[] PeakBands => _peakBands;
 
         // Frequency band edges (logarithmic distribution)
         private readonly float[] _bandFrequencies;
 
-        public SpectrumAnalyzer(int bandCount = 32, float smoothing = 0.3f, float peakDecay = 0.02f)
+        public SpectrumAnalyzer(int bandCount = 32, float smoothing = 0.3f, float peakDecay = 0.02f, float gain = 1.5f)
         {
             BandCount = bandCount;
             _smoothingFactor = smoothing;
             _peakDecay = peakDecay;
+            _gain = gain;
             _smoothedBands = new float[bandCount];
             _peakBands = new float[bandCount];
             _bandFrequencies = GenerateLogFrequencies(bandCount);
@@ -107,8 +112,11 @@ namespace InfoPanel.AudioSpectrum
 
                 // Convert to dB scale, normalize to 0-100 range
                 float db = 20f * MathF.Log10(MathF.Max(avgMagnitude, 1e-10f));
-                // Map roughly -80dB..0dB to 0..100
-                float normalized = MathF.Max(0, MathF.Min(100, (db + 80f) * (100f / 80f)));
+                // Map roughly -60dB..0dB to 0..100 (narrower range = taller bars)
+                float normalized = MathF.Max(0, MathF.Min(100, (db + 60f) * (100f / 60f)));
+
+                // Apply gain multiplier for visual fullness
+                normalized = MathF.Min(100, normalized * _gain);
 
                 // Apply a slight boost to lower frequencies for visual appeal
                 float boostFactor = 1f + (1f - (float)band / BandCount) * 0.3f;
@@ -117,10 +125,10 @@ namespace InfoPanel.AudioSpectrum
                 // Smooth
                 _smoothedBands[band] = _smoothedBands[band] * (1f - _smoothingFactor) + normalized * _smoothingFactor;
 
-                // Peak hold with decay
-                if (_smoothedBands[band] > _peakBands[band])
+                // Peak hold with decay - track raw (pre-smoothing) value so peaks shoot above bars
+                if (normalized > _peakBands[band])
                 {
-                    _peakBands[band] = _smoothedBands[band];
+                    _peakBands[band] = normalized;
                 }
                 else
                 {

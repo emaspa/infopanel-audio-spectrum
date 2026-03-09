@@ -43,7 +43,7 @@ namespace InfoPanel.AudioSpectrum
             _capture.Start(string.IsNullOrEmpty(_config.AudioDevice) ? null : _config.AudioDevice);
 
             // Initialize analyzer
-            _analyzer = new SpectrumAnalyzer(_config.BandCount, _config.Smoothing, _config.PeakDecay);
+            _analyzer = new SpectrumAnalyzer(_config.BandCount, _config.Smoothing, _config.PeakDecay, _config.Gain);
 
             // Initialize renderer
             _renderer = new SpectrumRenderer
@@ -54,10 +54,14 @@ namespace InfoPanel.AudioSpectrum
                 CustomColor2 = _config.ParseColor(_config.CustomColor2),
                 BackgroundColor = _config.ParseColor(_config.BackgroundColor),
                 BarSpacing = _config.BarSpacing,
-                CornerRadius = _config.CornerRadius,
+                CornerRadius = _config.Style == SpectrumStyle.Rounded ? MathF.Max(_config.CornerRadius, 10f) : _config.CornerRadius,
                 ShowPeaks = _config.ShowPeaks,
                 ShowReflection = _config.ShowReflection,
-                Brightness = _config.Brightness
+                Brightness = _config.Brightness,
+                Alignment = _config.Alignment,
+                ContentWidth = _config.ContentWidth,
+                CenterOut = _config.CenterOut,
+                EdgeBoost = _config.EdgeBoost
             };
 
             // Start HTTP server
