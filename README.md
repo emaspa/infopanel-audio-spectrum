@@ -98,6 +98,7 @@ CenterOut = false
 Gain = 1.5
 EdgeBoost = 5
 ServerPort = 52400
+FollowWaveLink = false
 ```
 
 ### Settings Reference
@@ -107,6 +108,7 @@ ServerPort = 52400
 | Setting | Default | Range | Description |
 |---------|---------|-------|-------------|
 | `AudioDevice` | *(empty)* | - | Audio device to capture. Leave empty for default output device, or set to a partial device name (e.g. `Speakers`, `Realtek`). Available devices are listed as comments in the config file. |
+| `FollowWaveLink` | `false` | `true` / `false` | Automatically follow the Elgato Wave Link monitor output device. When enabled, the plugin tracks which output device is selected in Wave Link and switches capture to match. Requires Wave Link 3.x running on the same machine. Overrides `AudioDevice` when active. |
 
 #### Image Output
 

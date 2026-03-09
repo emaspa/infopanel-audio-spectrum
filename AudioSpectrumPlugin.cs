@@ -4,17 +4,19 @@ using System.Diagnostics;
 
 namespace InfoPanel.AudioSpectrum
 {
-    public class AudioSpectrumPlugin : BasePlugin
+    public class AudioSpectrumPlugin : BasePlugin, IPluginConfigurable
     {
         private static readonly ILogger Logger = Log.ForContext<AudioSpectrumPlugin>();
 
         private readonly List<PluginContainer> _containers = [];
         private readonly SpectrumConfig _config = new();
+        private List<PluginConfigProperty>? _configProperties;
 
         private AudioCapture? _capture;
         private SpectrumAnalyzer? _analyzer;
         private SpectrumRenderer? _renderer;
         private SpectrumServer? _server;
+        private WaveLinkClient? _waveLinkClient;
 
         private PluginSensor[] _bandSensors = [];
         private PluginSensor? _peakSensor;
@@ -107,12 +109,24 @@ namespace InfoPanel.AudioSpectrum
             }
             _containers.Add(bandsContainer);
 
+            // Start Wave Link integration if enabled
+            if (_config.FollowWaveLink)
+            {
+                _waveLinkClient = new WaveLinkClient();
+                _waveLinkClient.ChannelsDiscovered += OnWaveLinkChannelsDiscovered;
+                _waveLinkClient.OutputDeviceChanged += OnWaveLinkOutputChanged;
+                _waveLinkClient.Start();
+                Logger.Information("Wave Link follow mode enabled");
+            }
+
             Logger.Information("AudioSpectrum initialized: {Bands} bands, {W}x{H}, style={Style}, url={Url}",
                 _config.BandCount, _config.ImageWidth, _config.ImageHeight, _config.Style, _server.ImageUrl);
         }
 
         public override void Close()
         {
+            _waveLinkClient?.Dispose();
+            _waveLinkClient = null;
             _capture?.Dispose();
             _renderer?.Dispose();
             _server?.Dispose();
@@ -173,6 +187,173 @@ namespace InfoPanel.AudioSpectrum
                 Logger.Error(ex, "Error updating audio spectrum");
             }
         }
+
+        private void OnWaveLinkChannelsDiscovered(string[] channelNames)
+        {
+            if (_capture == null) return;
+
+            Logger.Information("Wave Link channels discovered: {Channels}", string.Join(", ", channelNames));
+            _capture.StartMulti(channelNames);
+
+            if (_deviceText != null)
+            {
+                var output = _waveLinkClient?.CurrentOutputDeviceName ?? "Unknown";
+                _deviceText.Value = string.IsNullOrEmpty(_capture.LastError)
+                    ? $"Wave Link Mix ({output})"
+                    : $"ERROR: {_capture.LastError}";
+            }
+        }
+
+        private void OnWaveLinkOutputChanged(string outputDevice)
+        {
+            if (_deviceText != null && _capture != null)
+            {
+                _deviceText.Value = string.IsNullOrEmpty(_capture.LastError)
+                    ? $"Wave Link Mix ({outputDevice})"
+                    : $"ERROR: {_capture.LastError}";
+            }
+        }
+
+        #region IPluginConfigurable
+
+        public IReadOnlyList<PluginConfigProperty> ConfigProperties
+        {
+            get
+            {
+                _configProperties ??= BuildConfigProperties();
+                return _configProperties;
+            }
+        }
+
+        public void ApplyConfig(string key, object? value)
+        {
+            switch (key)
+            {
+                case "Style":
+                    if (value is string styleStr && Enum.TryParse<SpectrumStyle>(styleStr, true, out var style))
+                    {
+                        _config.Style = style;
+                        if (_renderer != null)
+                        {
+                            _renderer.Style = style;
+                            _renderer.CornerRadius = style == SpectrumStyle.Rounded
+                                ? MathF.Max(_config.CornerRadius, 10f) : _config.CornerRadius;
+                        }
+                    }
+                    break;
+                case "ColorScheme":
+                    if (value is string schemeStr && Enum.TryParse<ColorScheme>(schemeStr, true, out var scheme))
+                    {
+                        _config.Scheme = scheme;
+                        if (_renderer != null) _renderer.Scheme = scheme;
+                    }
+                    break;
+                case "CustomColor1":
+                    if (value is string c1) { _config.CustomColor1 = c1; if (_renderer != null) _renderer.CustomColor1 = _config.ParseColor(c1); }
+                    break;
+                case "CustomColor2":
+                    if (value is string c2) { _config.CustomColor2 = c2; if (_renderer != null) _renderer.CustomColor2 = _config.ParseColor(c2); }
+                    break;
+                case "BackgroundColor":
+                    if (value is string bg) { _config.BackgroundColor = bg; if (_renderer != null) _renderer.BackgroundColor = _config.ParseColor(bg); }
+                    break;
+                case "BarSpacing":
+                    if (value is double spacing) { _config.BarSpacing = (float)spacing; if (_renderer != null) _renderer.BarSpacing = _config.BarSpacing; }
+                    break;
+                case "CornerRadius":
+                    if (value is double cr) { _config.CornerRadius = (float)cr; if (_renderer != null) _renderer.CornerRadius = _config.CornerRadius; }
+                    break;
+                case "ShowPeaks":
+                    if (value is bool peaks) { _config.ShowPeaks = peaks; if (_renderer != null) _renderer.ShowPeaks = peaks; }
+                    break;
+                case "ShowReflection":
+                    if (value is bool refl) { _config.ShowReflection = refl; if (_renderer != null) _renderer.ShowReflection = refl; }
+                    break;
+                case "Brightness":
+                    if (value is double bright) { _config.Brightness = (float)bright; if (_renderer != null) _renderer.Brightness = _config.Brightness; }
+                    break;
+                case "Smoothing":
+                    if (value is double smooth) { _config.Smoothing = (float)smooth; if (_analyzer != null) _analyzer.Smoothing = _config.Smoothing; }
+                    break;
+                case "PeakDecay":
+                    if (value is double decay) { _config.PeakDecay = (float)decay; if (_analyzer != null) _analyzer.PeakDecay = _config.PeakDecay; }
+                    break;
+                case "Gain":
+                    if (value is double gain) { _config.Gain = (float)gain; if (_analyzer != null) _analyzer.Gain = _config.Gain; }
+                    break;
+                case "Alignment":
+                    if (value is string alignStr && Enum.TryParse<SpectrumAlignment>(alignStr, true, out var align))
+                    {
+                        _config.Alignment = align;
+                        if (_renderer != null) _renderer.Alignment = align;
+                    }
+                    break;
+                case "ContentWidth":
+                    if (value is double cw) { _config.ContentWidth = (float)cw; if (_renderer != null) _renderer.ContentWidth = _config.ContentWidth; }
+                    break;
+                case "CenterOut":
+                    if (value is bool center) { _config.CenterOut = center; if (_renderer != null) _renderer.CenterOut = center; }
+                    break;
+                case "EdgeBoost":
+                    if (value is double eb) { _config.EdgeBoost = (float)eb; if (_renderer != null) _renderer.EdgeBoost = _config.EdgeBoost; }
+                    break;
+                case "FollowWaveLink":
+                    if (value is bool follow) _config.FollowWaveLink = follow;
+                    break;
+            }
+
+            _config.Save();
+        }
+
+        private List<PluginConfigProperty> BuildConfigProperties()
+        {
+            return
+            [
+                new() { Key = "Style", DisplayName = "Style", Type = PluginConfigType.Choice,
+                    Value = _config.Style.ToString(),
+                    Options = Enum.GetNames<SpectrumStyle>() },
+                new() { Key = "ColorScheme", DisplayName = "Color Scheme", Type = PluginConfigType.Choice,
+                    Value = _config.Scheme.ToString(),
+                    Options = Enum.GetNames<ColorScheme>() },
+                new() { Key = "CustomColor1", DisplayName = "Custom Color 1", Type = PluginConfigType.String,
+                    Value = _config.CustomColor1, Description = "Hex color for Custom scheme start" },
+                new() { Key = "CustomColor2", DisplayName = "Custom Color 2", Type = PluginConfigType.String,
+                    Value = _config.CustomColor2, Description = "Hex color for Custom scheme end" },
+                new() { Key = "BackgroundColor", DisplayName = "Background Color", Type = PluginConfigType.String,
+                    Value = _config.BackgroundColor, Description = "Hex color or Transparent" },
+                new() { Key = "BarSpacing", DisplayName = "Bar Spacing", Type = PluginConfigType.Double,
+                    Value = (double)_config.BarSpacing, MinValue = 0.0, MaxValue = 0.8, Step = 0.05 },
+                new() { Key = "CornerRadius", DisplayName = "Corner Radius", Type = PluginConfigType.Double,
+                    Value = (double)_config.CornerRadius, MinValue = 0, MaxValue = 20, Step = 1 },
+                new() { Key = "ShowPeaks", DisplayName = "Show Peaks", Type = PluginConfigType.Boolean,
+                    Value = _config.ShowPeaks },
+                new() { Key = "ShowReflection", DisplayName = "Show Reflection", Type = PluginConfigType.Boolean,
+                    Value = _config.ShowReflection },
+                new() { Key = "Brightness", DisplayName = "Brightness", Type = PluginConfigType.Double,
+                    Value = (double)_config.Brightness, MinValue = 0.1, MaxValue = 2.0, Step = 0.1 },
+                new() { Key = "Smoothing", DisplayName = "Smoothing", Type = PluginConfigType.Double,
+                    Value = (double)_config.Smoothing, MinValue = 0.05, MaxValue = 0.95, Step = 0.05 },
+                new() { Key = "PeakDecay", DisplayName = "Peak Decay", Type = PluginConfigType.Double,
+                    Value = (double)_config.PeakDecay, MinValue = 0.005, MaxValue = 0.1, Step = 0.005 },
+                new() { Key = "Gain", DisplayName = "Gain", Type = PluginConfigType.Double,
+                    Value = (double)_config.Gain, MinValue = 0.5, MaxValue = 5.0, Step = 0.1 },
+                new() { Key = "Alignment", DisplayName = "Alignment", Type = PluginConfigType.Choice,
+                    Value = _config.Alignment.ToString(),
+                    Options = Enum.GetNames<SpectrumAlignment>() },
+                new() { Key = "ContentWidth", DisplayName = "Content Width", Type = PluginConfigType.Double,
+                    Value = (double)_config.ContentWidth, MinValue = 0.1, MaxValue = 1.0, Step = 0.05 },
+                new() { Key = "CenterOut", DisplayName = "Center Out", Type = PluginConfigType.Boolean,
+                    Value = _config.CenterOut },
+                new() { Key = "EdgeBoost", DisplayName = "Edge Boost", Type = PluginConfigType.Double,
+                    Value = (double)_config.EdgeBoost, MinValue = 1, MaxValue = 15, Step = 1,
+                    Description = "Only applies when Center Out is enabled" },
+                new() { Key = "FollowWaveLink", DisplayName = "Follow Elgato Wave Link", Type = PluginConfigType.Boolean,
+                    Value = _config.FollowWaveLink,
+                    Description = "Capture all Wave Link virtual channels to recreate the Personal Mix. Requires Wave Link 3.x." },
+            ];
+        }
+
+        #endregion
 
         private static string GetBandLabel(int index, int totalBands)
         {

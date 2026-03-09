@@ -43,6 +43,7 @@ namespace InfoPanel.AudioSpectrum
         public float EdgeBoost { get; set; } = 5f;
         public int ServerPort { get; set; } = 52400;
         public int RefreshIntervalMs { get; set; } = 5000;
+        public bool FollowWaveLink { get; set; } = false;
 
         public void Load()
         {
@@ -83,6 +84,7 @@ namespace InfoPanel.AudioSpectrum
             SetDefault("EdgeBoost", "5");
             SetDefault("ServerPort", "52400");
             SetDefault("RefreshIntervalMs", "5000");
+            SetDefault("FollowWaveLink", "false");
 
             // Write available audio devices as comments
             try
@@ -149,6 +151,7 @@ namespace InfoPanel.AudioSpectrum
             EdgeBoost = GetFloat("EdgeBoost", 5f);
             ServerPort = GetInt("ServerPort", 52400);
             RefreshIntervalMs = GetInt("RefreshIntervalMs", 5000);
+            FollowWaveLink = GetBool("FollowWaveLink", false);
 
             // Clamp values
             BandCount = Math.Clamp(BandCount, 8, 128);
@@ -223,6 +226,7 @@ namespace InfoPanel.AudioSpectrum
             _iniData[SECTION]["EdgeBoost"] = EdgeBoost.ToString(System.Globalization.CultureInfo.InvariantCulture);
             _iniData[SECTION]["ServerPort"] = ServerPort.ToString();
             _iniData[SECTION]["RefreshIntervalMs"] = RefreshIntervalMs.ToString();
+            _iniData[SECTION]["FollowWaveLink"] = FollowWaveLink.ToString().ToLower();
 
             var parser = new FileIniDataParser();
             parser.WriteFile(ConfigFilePath, _iniData);
