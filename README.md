@@ -70,7 +70,7 @@ All settings are stored in an INI file located next to the plugin DLL:
 C:\ProgramData\InfoPanel\plugins\InfoPanel.AudioSpectrum\InfoPanel.AudioSpectrum.dll.ini
 ```
 
-The config file is auto-generated with defaults on first run. Edit it with any text editor and restart the plugin (disable/enable on the Plugins page) to apply changes.
+The config file is auto-generated with defaults on first run. Most settings can be changed live from the Plugins page in InfoPanel without restarting. You can also edit the INI file directly with a text editor (restart the plugin to apply).
 
 ### Example config
 
@@ -108,7 +108,7 @@ FollowWaveLink = false
 | Setting | Default | Range | Description |
 |---------|---------|-------|-------------|
 | `AudioDevice` | *(empty)* | - | Audio device to capture. Leave empty for default output device, or set to a partial device name (e.g. `Speakers`, `Realtek`). Available devices are listed as comments in the config file. |
-| `FollowWaveLink` | `false` | `true` / `false` | Automatically follow the Elgato Wave Link monitor output device. When enabled, the plugin tracks which output device is selected in Wave Link and switches capture to match. Requires Wave Link 3.x running on the same machine. Overrides `AudioDevice` when active. |
+| `FollowWaveLink` | `false` | `true` / `false` | Capture all Elgato Wave Link virtual audio channels simultaneously and mix them to recreate the full audio mix for spectrum visualization. Requires Wave Link 3.x running on the same machine. Overrides `AudioDevice` when active. See [Wave Link Integration](#elgato-wave-link-integration). |
 
 #### Image Output
 
@@ -179,6 +179,23 @@ FollowWaveLink = false
 - **Monochrome** - Grayscale gradient.
 - **Classic** - Per-bar green-yellow-red gradient based on intensity (like a VU meter).
 - **Custom** - Linear gradient between `CustomColor1` and `CustomColor2`.
+
+## Elgato Wave Link Integration
+
+If you use [Elgato Wave Link](https://www.elgato.com/wave-link) to manage your audio, enable the `FollowWaveLink` option to have the plugin automatically capture all Wave Link virtual channels (System, Music, Browser, Game, etc.) and mix them together. This recreates your full audio mix for spectrum visualization regardless of which physical output device you have selected in Wave Link.
+
+**How it works:**
+
+1. The plugin connects to Wave Link's local WebSocket API and discovers all configured audio channels
+2. It opens a WASAPI loopback capture on each channel's virtual audio device simultaneously
+3. The audio from all channels is mixed together in real time for FFT analysis and spectrum rendering
+4. When the output device changes in Wave Link (e.g. switching from speakers to headphones), the display updates automatically
+
+**Requirements:**
+
+- Wave Link 3.x running on the same machine
+- The setting can be toggled on/off live from the Plugins page in InfoPanel (no restart needed)
+- When active, the Audio Device sensor shows "Wave Link Mix (device name)" where device name is the currently selected output
 
 ## Building from Source
 
