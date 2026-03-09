@@ -10,7 +10,8 @@ namespace InfoPanel.AudioSpectrum
         Dots,
         Mirror,
         VuMeter,
-        VFD
+        VFD,
+        AnalogVU
     }
 
     internal enum ColorScheme
@@ -155,6 +156,9 @@ namespace InfoPanel.AudioSpectrum
                     break;
                 case SpectrumStyle.VFD:
                     DrawVfd(canvas, bands, peaks, contentW, drawHeight);
+                    break;
+                case SpectrumStyle.AnalogVU:
+                    DrawAnalogVU(canvas, bands, peaks, contentW, height);
                     break;
             }
 
@@ -683,6 +687,265 @@ namespace InfoPanel.AudioSpectrum
                     float barHeight = activeLines * pitch;
                     canvas.DrawRect(x - 1, height - barHeight, barWidth + 2, barHeight, bgGlow);
                 }
+            }
+        }
+
+        private void DrawAnalogVU(SKCanvas canvas, float[] bands, float[] peaks, float width, float height)
+        {
+            // Compute peak and average from band data
+            float peak = 0, sum = 0, peakHold = 0, avgPeakHold = 0;
+            for (int i = 0; i < bands.Length; i++)
+            {
+                if (bands[i] > peak) peak = bands[i];
+                sum += bands[i];
+            }
+            float avg = sum / bands.Length;
+            for (int i = 0; i < peaks.Length; i++)
+            {
+                if (peaks[i] > peakHold) peakHold = peaks[i];
+                avgPeakHold += peaks[i];
+            }
+            avgPeakHold /= peaks.Length;
+
+            // Two meters side by side
+            float meterW = width / 2f;
+            DrawSingleAnalogMeter(canvas, 0, 0, meterW, height, peak / 100f, peakHold / 100f, "PEAK");
+            DrawSingleAnalogMeter(canvas, meterW, 0, meterW, height, avg / 100f, avgPeakHold / 100f, "AVG");
+        }
+
+        private void DrawSingleAnalogMeter(SKCanvas canvas, float ox, float oy, float w, float h,
+            float level, float peakLevel, string label)
+        {
+            level = Math.Clamp(level, 0f, 1f);
+            peakLevel = Math.Clamp(peakLevel, 0f, 1f);
+            float s = MathF.Min(w, h); // scale unit
+
+            // === BEZEL ===
+            float bz = Math.Max(3, s * 0.04f);
+            var outerRect = new SKRect(ox + 1, oy + 1, ox + w - 1, oy + h - 1);
+            using var framePaint = new SKPaint { IsAntialias = true, Color = new SKColor(30, 28, 24) };
+            canvas.DrawRoundRect(outerRect, 5, 5, framePaint);
+
+            var midRect = new SKRect(ox + bz * 0.5f, oy + bz * 0.5f, ox + w - bz * 0.5f, oy + h - bz * 0.5f);
+            using var midPaint = new SKPaint { IsAntialias = true, Color = new SKColor(60, 55, 48) };
+            canvas.DrawRoundRect(midRect, 4, 4, midPaint);
+
+            // === FACE ===
+            var face = new SKRect(ox + bz, oy + bz, ox + w - bz, oy + h - bz);
+            float fW = face.Width, fH = face.Height;
+
+            using var faceShader = SKShader.CreateRadialGradient(
+                new SKPoint(face.MidX, face.Top + fH * 0.35f), fW * 0.8f,
+                [new SKColor(242, 235, 208), new SKColor(220, 208, 175)],
+                [0f, 1f], SKShaderTileMode.Clamp);
+            using var facePaint = new SKPaint { IsAntialias = true, Shader = faceShader };
+            canvas.DrawRoundRect(face, 2, 2, facePaint);
+
+            // Vignette
+            using var vig = new SKPaint
+            {
+                IsAntialias = true, Style = SKPaintStyle.Stroke,
+                StrokeWidth = Math.Max(4, s * 0.03f),
+                Color = new SKColor(0, 0, 0, 20)
+            };
+            canvas.DrawRoundRect(face, 2, 2, vig);
+
+            // === ARC GEOMETRY ===
+            // Pivot at bottom center, large radius so arc fills the face
+            float cx = face.MidX;
+            float cy = face.Bottom + fH * 0.05f; // pivot slightly below face bottom
+            float R = fH * 0.85f; // large radius
+            if (R > fW * 0.52f) R = fW * 0.52f; // don't exceed width
+
+            float aDeg0 = -145f; // start (left)
+            float aDeg1 = -35f;  // end (right)
+            float sweep = aDeg1 - aDeg0;
+
+            // dB positions along the arc (0..1)
+            float[] dbVal = [-20, -10, -7, -5, -3, -2, -1, 0, 1, 2, 3];
+            float[] dbPos = [0f, 0.23f, 0.33f, 0.42f, 0.51f, 0.57f, 0.635f, 0.71f, 0.79f, 0.89f, 1f];
+
+            // === dB ARC LINE ===
+            float zeroA = aDeg0 + 0.71f * sweep;
+            var arcBox = new SKRect(cx - R, cy - R, cx + R, cy + R);
+            using var blackLine = new SKPaint
+            {
+                IsAntialias = true, Style = SKPaintStyle.Stroke,
+                Color = new SKColor(40, 35, 30), StrokeWidth = Math.Max(1, s * 0.006f)
+            };
+            using var redLine = new SKPaint
+            {
+                IsAntialias = true, Style = SKPaintStyle.Stroke,
+                Color = new SKColor(190, 25, 15), StrokeWidth = Math.Max(1.2f, s * 0.007f)
+            };
+            canvas.DrawArc(arcBox, aDeg0, zeroA - aDeg0, false, blackLine);
+            canvas.DrawArc(arcBox, zeroA, aDeg1 - zeroA, false, redLine);
+
+            // === TICKS & dB LABELS ===
+            float tOut = R;
+            float tIn = R * 0.90f;
+            float tMid = R * 0.94f;
+            float lR = R * 0.80f; // label distance from pivot
+            float fs = Math.Max(6f, s * 0.055f);
+
+            using var fnt = new SKFont(SKTypeface.FromFamilyName("Arial", SKFontStyle.Normal), fs);
+            using var lblP = new SKPaint { IsAntialias = true };
+            using var tkP = new SKPaint { IsAntialias = true, Style = SKPaintStyle.Stroke };
+
+            for (int i = 0; i < dbVal.Length; i++)
+            {
+                float a = aDeg0 + dbPos[i] * sweep;
+                float rad = a * MathF.PI / 180f;
+                float co = MathF.Cos(rad), si = MathF.Sin(rad);
+                bool red = dbVal[i] >= 0;
+
+                tkP.Color = red ? new SKColor(190, 25, 15) : new SKColor(40, 35, 30);
+                tkP.StrokeWidth = Math.Max(1, s * 0.006f);
+
+                canvas.DrawLine(cx + co * tIn, cy + si * tIn, cx + co * tOut, cy + si * tOut, tkP);
+
+                string lbl = dbVal[i] switch { < 0 => dbVal[i].ToString("F0"), 0 => "0", _ => "+" + dbVal[i].ToString("F0") };
+                lblP.Color = red ? new SKColor(190, 25, 15) : new SKColor(40, 35, 30);
+                canvas.DrawText(lbl, cx + co * lR, cy + si * lR + fs * 0.35f, SKTextAlign.Center, fnt, lblP);
+
+                // Minor tick
+                if (i < dbVal.Length - 1)
+                {
+                    float ma = aDeg0 + ((dbPos[i] + dbPos[i + 1]) / 2f) * sweep;
+                    float mr = ma * MathF.PI / 180f;
+                    tkP.StrokeWidth = Math.Max(0.5f, s * 0.003f);
+                    tkP.Color = (dbVal[i] >= 0 || dbVal[i + 1] >= 0) ? new SKColor(190, 25, 15) : new SKColor(40, 35, 30);
+                    canvas.DrawLine(cx + MathF.Cos(mr) * tMid, cy + MathF.Sin(mr) * tMid,
+                        cx + MathF.Cos(mr) * tOut, cy + MathF.Sin(mr) * tOut, tkP);
+                }
+            }
+
+            // === PERCENTAGE SCALE (outer arc, below dB) ===
+            float pR = R * 1.08f;  // outer radius for pct ticks
+            float pIn = R * 1.02f; // inner radius for pct ticks
+            float pLbl = R * 1.16f;
+            float pFs = Math.Max(5f, fs * 0.6f);
+            using var pFnt = new SKFont(SKTypeface.FromFamilyName("Arial", SKFontStyle.Normal), pFs);
+            using var pP = new SKPaint { IsAntialias = true, Color = new SKColor(50, 45, 40, 180) };
+            using var pTk = new SKPaint
+            {
+                IsAntialias = true, Style = SKPaintStyle.Stroke,
+                Color = new SKColor(50, 45, 40, 140), StrokeWidth = Math.Max(0.5f, s * 0.003f)
+            };
+
+            int[] pcts = [0, 20, 40, 60, 80, 100];
+            float[] pPos = [0f, 0.23f, 0.42f, 0.57f, 0.71f, 1f];
+            for (int i = 0; i < pcts.Length; i++)
+            {
+                float a = aDeg0 + pPos[i] * sweep;
+                float rad = a * MathF.PI / 180f;
+                float co = MathF.Cos(rad), si = MathF.Sin(rad);
+                canvas.DrawLine(cx + co * pIn, cy + si * pIn, cx + co * pR, cy + si * pR, pTk);
+                canvas.DrawText(pcts[i].ToString(), cx + co * pLbl, cy + si * pLbl + pFs * 0.35f,
+                    SKTextAlign.Center, pFnt, pP);
+            }
+
+            // === "VU" LABEL ===
+            float vuFs = Math.Max(8f, s * 0.08f);
+            using var vuFnt = new SKFont(
+                SKTypeface.FromFamilyName("Arial", SKFontStyleWeight.Bold, SKFontStyleWidth.Normal, SKFontStyleSlant.Upright), vuFs);
+            using var vuP = new SKPaint { IsAntialias = true, Color = new SKColor(40, 35, 30) };
+            // Place between top of face and top of arc
+            float arcTopY = cy - R;
+            float vuY = face.Top + (arcTopY - face.Top) * 0.65f;
+            canvas.DrawText("VU", cx, vuY, SKTextAlign.Center, vuFnt, vuP);
+
+            // Small marker dot at top of arc
+            float topRad = -90f * MathF.PI / 180f;
+            using var dotP = new SKPaint { IsAntialias = true, Color = new SKColor(40, 35, 30) };
+            canvas.DrawCircle(cx + MathF.Cos(topRad) * R, cy + MathF.Sin(topRad) * R,
+                Math.Max(1.5f, s * 0.007f), dotP);
+
+            // Sub-label
+            float subFs = Math.Max(5f, s * 0.04f);
+            using var subFnt = new SKFont(SKTypeface.FromFamilyName("Arial", SKFontStyle.Normal), subFs);
+            using var subP = new SKPaint { IsAntialias = true, Color = new SKColor(110, 100, 85) };
+            canvas.DrawText(label, cx, vuY + vuFs * 0.7f, SKTextAlign.Center, subFnt, subP);
+
+            // === PEAK HOLD NEEDLE (thin, red, behind main needle) ===
+            if (ShowPeaks && peakLevel > 0.01f)
+            {
+                float pkA = aDeg0 + peakLevel * sweep;
+                float pkR = pkA * MathF.PI / 180f;
+                float pkLen = R * 1.04f;
+                using var pkP = new SKPaint
+                {
+                    IsAntialias = true, Style = SKPaintStyle.Stroke,
+                    Color = new SKColor(200, 30, 15, 140),
+                    StrokeWidth = Math.Max(0.8f, s * 0.005f),
+                    StrokeCap = SKStrokeCap.Round
+                };
+                canvas.DrawLine(cx, cy, cx + MathF.Cos(pkR) * pkLen, cy + MathF.Sin(pkR) * pkLen, pkP);
+            }
+
+            // === MAIN NEEDLE ===
+            float nA = aDeg0 + level * sweep;
+            float nR = nA * MathF.PI / 180f;
+            float nLen = R * 1.06f;
+            float nW = Math.Max(1.2f, s * 0.008f);
+
+            // Shadow
+            using var shP = new SKPaint
+            {
+                IsAntialias = true, Style = SKPaintStyle.Stroke,
+                Color = new SKColor(0, 0, 0, 25), StrokeWidth = nW + 2
+            };
+            canvas.DrawLine(cx + 1, cy + 1,
+                cx + 1 + MathF.Cos(nR) * nLen, cy + 1 + MathF.Sin(nR) * nLen, shP);
+
+            // Needle
+            using var nP = new SKPaint
+            {
+                IsAntialias = true, Style = SKPaintStyle.Stroke,
+                Color = new SKColor(15, 12, 8), StrokeWidth = nW, StrokeCap = SKStrokeCap.Round
+            };
+            canvas.DrawLine(cx, cy, cx + MathF.Cos(nR) * nLen, cy + MathF.Sin(nR) * nLen, nP);
+
+            // Pivot
+            float pvR = Math.Max(2.5f, s * 0.02f);
+            using var pvO = new SKPaint { IsAntialias = true, Color = new SKColor(45, 40, 35) };
+            using var pvI = new SKPaint { IsAntialias = true, Color = new SKColor(25, 22, 18) };
+            canvas.DrawCircle(cx, cy, pvR, pvO);
+            canvas.DrawCircle(cx, cy, pvR * 0.55f, pvI);
+
+            // === CLIP LED (top-right corner, red when level >= 0 dB i.e. 71%) ===
+            float ledR = Math.Max(3, s * 0.025f);
+            float ledX = face.Right - ledR * 2.5f;
+            float ledY = face.Top + ledR * 2.5f;
+            bool clipping = level >= 0.71f;
+
+            // LED housing (dark circle)
+            using var ledHousing = new SKPaint { IsAntialias = true, Color = new SKColor(40, 35, 30) };
+            canvas.DrawCircle(ledX, ledY, ledR * 1.3f, ledHousing);
+
+            if (clipping)
+            {
+                // Red LED on with glow
+                using var ledGlow = new SKPaint
+                {
+                    IsAntialias = true,
+                    Color = new SKColor(255, 20, 10, 60),
+                    MaskFilter = SKMaskFilter.CreateBlur(SKBlurStyle.Normal, ledR * 1.5f)
+                };
+                canvas.DrawCircle(ledX, ledY, ledR * 2f, ledGlow);
+
+                using var ledOn = new SKPaint { IsAntialias = true, Color = new SKColor(255, 25, 10) };
+                canvas.DrawCircle(ledX, ledY, ledR, ledOn);
+
+                // Bright highlight
+                using var ledHi = new SKPaint { IsAntialias = true, Color = new SKColor(255, 150, 130, 180) };
+                canvas.DrawCircle(ledX - ledR * 0.25f, ledY - ledR * 0.25f, ledR * 0.35f, ledHi);
+            }
+            else
+            {
+                // LED off (dark red)
+                using var ledOff = new SKPaint { IsAntialias = true, Color = new SKColor(80, 15, 10) };
+                canvas.DrawCircle(ledX, ledY, ledR, ledOff);
             }
         }
 

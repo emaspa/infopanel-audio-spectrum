@@ -10,6 +10,10 @@ A real-time audio spectrum visualizer plugin for [InfoPanel](https://github.com/
 |:---:|:---:|:---:|
 | ![Wave Neon](screenshots/wave-neon.png) | ![Wave Fire](screenshots/wave-fire.png) | ![Dots Classic](screenshots/dots-classic.png) |
 
+| VuMeter + FireInverted + CenterOut | VFD + CenterOut | Analog VU Meter |
+|:---:|:---:|:---:|
+| ![VuMeter Fire](screenshots/vumeter-fire.png) | ![VFD](screenshots/vfd.png) | ![Analog VU](screenshots/analogvu.png) |
+
 ## How It Works
 
 The plugin captures your PC's audio output (whatever you hear through your speakers/headphones) using Windows WASAPI loopback, runs it through a 4096-point FFT to extract frequency data, and renders a spectrum visualization as a JPEG image stream. InfoPanel picks up the stream via a local HTTP URL and displays it as a live image on your panel.
@@ -131,8 +135,8 @@ FollowWaveLink = false
 
 | Setting | Default | Values | Description |
 |---------|---------|--------|-------------|
-| `Style` | `Bars` | `Bars`, `Rounded`, `Wave`, `Dots`, `Mirror`, `VuMeter`, `VFD` | Rendering style (see [Styles](#styles) below). |
-| `ColorScheme` | `Neon` | `Neon`, `Fire`, `Ice`, `Rainbow`, `Ocean`, `Monochrome`, `Classic`, `Custom` | Color scheme (see [Color Schemes](#color-schemes) below). |
+| `Style` | `Bars` | `Bars`, `Rounded`, `Wave`, `Dots`, `Mirror`, `VuMeter`, `VFD`, `AnalogVU` | Rendering style (see [Styles](#styles) below). |
+| `ColorScheme` | `Neon` | `Neon`, `Fire`, `FireInverted`, `Ice`, `Rainbow`, `Ocean`, `Monochrome`, `Classic`, `Custom` | Color scheme (see [Color Schemes](#color-schemes) below). |
 | `BarSpacing` | `0.3` | 0.0 - 0.8 | Gap between bars as a fraction of bar width. `0` = no gap, `0.5` = gap equal to bar width. |
 | `CornerRadius` | `4` | 0 - 20 | Corner rounding in pixels. Mainly affects the `Rounded` style. |
 | `ShowPeaks` | `true` | `true` / `false` | Show peak hold indicators that float above the bars and slowly decay. |
@@ -147,6 +151,8 @@ FollowWaveLink = false
 | `ContentWidth` | `1.0` | 0.1 - 1.0 | Fraction of the image width used by the spectrum. `0.5` = spectrum uses half the width. |
 | `CenterOut` | `false` | `true` / `false` | Reorder bands so low frequencies are in the center and high frequencies are on the edges. Creates a symmetrical look. |
 | `EdgeBoost` | `5` | 1 - 15 | Multiplier for edge bands when CenterOut is enabled. High frequencies naturally have less energy; this compensates so edge bars are visible. Only applies when `CenterOut = true`. |
+| `NoiseFloor` | `0` | 0.0 - 1.0 | Minimum band level as a fraction of the average. Ensures all bands show some activity when audio is playing. `0` = off, `0.5` = half of average. |
+| `TrimBands` | `0` | 0 - 20 | Number of bands to cut from each side. Removes low-energy edge bands for a cleaner look. |
 
 #### Custom Colors
 
@@ -168,13 +174,15 @@ FollowWaveLink = false
 - **Wave** - Smooth curve connecting the frequency bands with a glow effect and filled area beneath.
 - **Dots** - Matrix-style dot display with 16 dots per column. Active dots glow, inactive dots are dimmed.
 - **Mirror** - Bars extend both up and down from a center line, creating a symmetrical waveform effect.
-- **VuMeter** - Segmented bars with classic green/yellow/red VU meter coloring. 20 segments per column with subtle glow on active segments.
-- **VFD** - Vacuum fluorescent display style with cyan-green phosphor colors, rounded segments, phosphor bloom effect, and dim ghost segments for the characteristic VFD look.
+- **VuMeter** - LED-style segmented bars with green/yellow/red coloring (24 segments). Supports Fire/FireInverted vertical gradients.
+- **VFD** - Vacuum fluorescent display with thin horizontal scan lines, cyan-green phosphor glow, bloom effect, and dim ghost grid for inactive segments. Matches real VFD hardware.
+- **AnalogVU** - Two classic analog needle VU meters (Peak + Average) with retro cream face, dark bezel, dB and percentage scales, peak hold needle, and clip LED indicator.
 
 ### Color Schemes
 
 - **Neon** - Cyan/green to magenta. Vibrant and modern.
-- **Fire** - Orange to yellow. Warm and intense.
+- **Fire** - Vertical flame gradient: dark red at base, orange in the middle, yellow/white at the tips.
+- **FireInverted** - Inverted flame: yellow/white at base, fading to dark red at the tips.
 - **Ice** - Light blue to white. Cool and clean.
 - **Rainbow** - Full spectrum HSL cycling across the frequency range.
 - **Ocean** - Deep blue to cyan/turquoise. Subtle and calm.
