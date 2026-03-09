@@ -188,6 +188,16 @@ namespace InfoPanel.AudioSpectrum
             }
         }
 
+        private void UpdateDeviceText()
+        {
+            if (_deviceText != null && _capture != null)
+            {
+                _deviceText.Value = string.IsNullOrEmpty(_capture.LastError)
+                    ? _capture.DeviceName
+                    : $"ERROR: {_capture.LastError}";
+            }
+        }
+
         private void OnWaveLinkChannelsDiscovered(string[] channelNames)
         {
             if (_capture == null) return;
@@ -297,8 +307,41 @@ namespace InfoPanel.AudioSpectrum
                 case "EdgeBoost":
                     if (value is double eb) { _config.EdgeBoost = (float)eb; if (_renderer != null) _renderer.EdgeBoost = _config.EdgeBoost; }
                     break;
+                case "AudioDevice":
+                    if (value is string device)
+                    {
+                        _config.AudioDevice = device;
+                        if (_capture != null && _waveLinkClient == null)
+                        {
+                            _capture.Start(string.IsNullOrEmpty(device) ? null : device);
+                            UpdateDeviceText();
+                        }
+                    }
+                    break;
                 case "FollowWaveLink":
-                    if (value is bool follow) _config.FollowWaveLink = follow;
+                    if (value is bool follow)
+                    {
+                        _config.FollowWaveLink = follow;
+                        if (follow)
+                        {
+                            if (_waveLinkClient == null)
+                            {
+                                _waveLinkClient = new WaveLinkClient();
+                                _waveLinkClient.ChannelsDiscovered += OnWaveLinkChannelsDiscovered;
+                                _waveLinkClient.OutputDeviceChanged += OnWaveLinkOutputChanged;
+                                _waveLinkClient.Start();
+                                Logger.Information("Wave Link follow mode enabled");
+                            }
+                        }
+                        else
+                        {
+                            _waveLinkClient?.Dispose();
+                            _waveLinkClient = null;
+                            _capture?.Start(string.IsNullOrEmpty(_config.AudioDevice) ? null : _config.AudioDevice);
+                            UpdateDeviceText();
+                            Logger.Information("Wave Link follow mode disabled");
+                        }
+                    }
                     break;
             }
 
@@ -309,6 +352,11 @@ namespace InfoPanel.AudioSpectrum
         {
             return
             [
+                new() { Key = "AudioDevice", DisplayName = "Audio Device", Type = PluginConfigType.String,
+                    Value = _config.AudioDevice, Description = "Leave empty for default device, or set a partial device name" },
+                new() { Key = "FollowWaveLink", DisplayName = "Follow Elgato Wave Link", Type = PluginConfigType.Boolean,
+                    Value = _config.FollowWaveLink,
+                    Description = "Capture all Wave Link virtual channels. Overrides Audio Device when active." },
                 new() { Key = "Style", DisplayName = "Style", Type = PluginConfigType.Choice,
                     Value = _config.Style.ToString(),
                     Options = Enum.GetNames<SpectrumStyle>() },
@@ -347,9 +395,6 @@ namespace InfoPanel.AudioSpectrum
                 new() { Key = "EdgeBoost", DisplayName = "Edge Boost", Type = PluginConfigType.Double,
                     Value = (double)_config.EdgeBoost, MinValue = 1, MaxValue = 15, Step = 1,
                     Description = "Only applies when Center Out is enabled" },
-                new() { Key = "FollowWaveLink", DisplayName = "Follow Elgato Wave Link", Type = PluginConfigType.Boolean,
-                    Value = _config.FollowWaveLink,
-                    Description = "Capture all Wave Link virtual channels to recreate the Personal Mix. Requires Wave Link 3.x." },
             ];
         }
 
