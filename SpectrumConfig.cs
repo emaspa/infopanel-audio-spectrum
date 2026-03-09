@@ -41,6 +41,8 @@ namespace InfoPanel.AudioSpectrum
         public bool CenterOut { get; set; } = false;
         public float Gain { get; set; } = 1.5f;
         public float EdgeBoost { get; set; } = 5f;
+        public float NoiseFloor { get; set; } = 0f;
+        public int TrimBands { get; set; } = 0;
         public int ServerPort { get; set; } = 52400;
         public int RefreshIntervalMs { get; set; } = 5000;
         public bool FollowWaveLink { get; set; } = false;
@@ -82,6 +84,8 @@ namespace InfoPanel.AudioSpectrum
             SetDefault("CenterOut", "false");
             SetDefault("Gain", "1.5");
             SetDefault("EdgeBoost", "5");
+            SetDefault("NoiseFloor", "0");
+            SetDefault("TrimBands", "0");
             SetDefault("ServerPort", "52400");
             SetDefault("RefreshIntervalMs", "5000");
             SetDefault("FollowWaveLink", "false");
@@ -149,6 +153,8 @@ namespace InfoPanel.AudioSpectrum
             CenterOut = GetBool("CenterOut", false);
             Gain = GetFloat("Gain", 1.5f);
             EdgeBoost = GetFloat("EdgeBoost", 5f);
+            NoiseFloor = GetFloat("NoiseFloor", 0f);
+            TrimBands = GetInt("TrimBands", 0);
             ServerPort = GetInt("ServerPort", 52400);
             RefreshIntervalMs = GetInt("RefreshIntervalMs", 5000);
             FollowWaveLink = GetBool("FollowWaveLink", false);
@@ -165,6 +171,8 @@ namespace InfoPanel.AudioSpectrum
             ContentWidth = Math.Clamp(ContentWidth, 0.1f, 1.0f);
             Gain = Math.Clamp(Gain, 0.5f, 5.0f);
             EdgeBoost = Math.Clamp(EdgeBoost, 1f, 15f);
+            NoiseFloor = Math.Clamp(NoiseFloor, 0f, 1f);
+            TrimBands = Math.Clamp(TrimBands, 0, 20);
             ServerPort = Math.Clamp(ServerPort, 1024, 65535);
             RefreshIntervalMs = Math.Clamp(RefreshIntervalMs, 1000, 60000);
         }
@@ -224,6 +232,8 @@ namespace InfoPanel.AudioSpectrum
             _iniData[SECTION]["CenterOut"] = CenterOut.ToString().ToLower();
             _iniData[SECTION]["Gain"] = Gain.ToString(System.Globalization.CultureInfo.InvariantCulture);
             _iniData[SECTION]["EdgeBoost"] = EdgeBoost.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            _iniData[SECTION]["NoiseFloor"] = NoiseFloor.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            _iniData[SECTION]["TrimBands"] = TrimBands.ToString();
             _iniData[SECTION]["ServerPort"] = ServerPort.ToString();
             _iniData[SECTION]["RefreshIntervalMs"] = RefreshIntervalMs.ToString();
             _iniData[SECTION]["FollowWaveLink"] = FollowWaveLink.ToString().ToLower();

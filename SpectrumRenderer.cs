@@ -10,13 +10,14 @@ namespace InfoPanel.AudioSpectrum
         Dots,
         Mirror,
         VuMeter,
-        Vfd
+        VFD
     }
 
     internal enum ColorScheme
     {
         Neon,
         Fire,
+        FireInverted,
         Ice,
         Rainbow,
         Ocean,
@@ -53,6 +54,8 @@ namespace InfoPanel.AudioSpectrum
         public float ContentWidth { get; set; } = 1.0f; // 0-1, fraction of image width used by spectrum
         public bool CenterOut { get; set; } = false;
         public float EdgeBoost { get; set; } = 5f; // multiplier at edges for CenterOut mode
+        public float NoiseFloor { get; set; } = 0f; // 0-1, fraction of average used as minimum band level
+        public int TrimBands { get; set; } = 0; // number of bands to cut from each side
 
         public byte[]? Render(float[] bands, float[] peaks, int width, int height)
         {
@@ -91,14 +94,41 @@ namespace InfoPanel.AudioSpectrum
                 peaks = ReorderCenterOut(peaks);
 
                 // Boost edge bars to compensate for high-freq energy falloff
+                // Exponential curve so outer bands get much stronger boost
                 int center = bands.Length / 2;
                 for (int i = 0; i < bands.Length; i++)
                 {
                     float distRatio = MathF.Abs(i - center) / (float)center;
-                    float edgeBoost = 1f + distRatio * (EdgeBoost - 1f);
+                    float edgeBoost = MathF.Pow(EdgeBoost, distRatio * distRatio);
                     bands[i] = MathF.Min(100, bands[i] * edgeBoost);
                     peaks[i] = MathF.Min(100, peaks[i] * edgeBoost);
                 }
+
+            }
+
+            // Noise floor: ensure all bands show some activity when there's audio
+            if (NoiseFloor > 0)
+            {
+                float avg = 0;
+                for (int i = 0; i < bands.Length; i++) avg += bands[i];
+                avg /= bands.Length;
+
+                if (avg > 2f)
+                {
+                    float floor = avg * NoiseFloor;
+                    for (int i = 0; i < bands.Length; i++)
+                    {
+                        if (bands[i] < floor) bands[i] = floor;
+                        if (peaks[i] < floor) peaks[i] = floor;
+                    }
+                }
+            }
+
+            // Trim bands from each side
+            if (TrimBands > 0 && bands.Length > TrimBands * 2 + 2)
+            {
+                bands = bands[TrimBands..^TrimBands];
+                peaks = peaks[TrimBands..^TrimBands];
             }
 
             float drawHeight = ShowReflection ? height * 0.6f : height;
@@ -123,7 +153,7 @@ namespace InfoPanel.AudioSpectrum
                 case SpectrumStyle.VuMeter:
                     DrawVuMeter(canvas, bands, peaks, contentW, height);
                     break;
-                case SpectrumStyle.Vfd:
+                case SpectrumStyle.VFD:
                     DrawVfd(canvas, bands, peaks, contentW, drawHeight);
                     break;
             }
@@ -164,7 +194,7 @@ namespace InfoPanel.AudioSpectrum
                     Color = ApplyBrightness(color)
                 };
 
-                // Gradient fill - Classic: green->yellow->red within each bar
+                // Gradient fill - vertical gradient within each bar for Classic and Fire
                 SKShader shader;
                 if (Scheme == ColorScheme.Classic)
                 {
@@ -178,6 +208,38 @@ namespace InfoPanel.AudioSpectrum
                             ApplyBrightness(new SKColor(255, 0, 0))
                         ],
                         [0f, 0.3f, 0.7f, 1f],
+                        SKShaderTileMode.Clamp);
+                }
+                else if (Scheme == ColorScheme.Fire)
+                {
+                    // Flame gradient: dark red at base -> bright orange -> yellow at tip
+                    shader = SKShader.CreateLinearGradient(
+                        new SKPoint(x, height),
+                        new SKPoint(x, y),
+                        [
+                            ApplyBrightness(new SKColor(120, 0, 0)),
+                            ApplyBrightness(new SKColor(255, 50, 0)),
+                            ApplyBrightness(new SKColor(255, 160, 0)),
+                            ApplyBrightness(new SKColor(255, 240, 60)),
+                            ApplyBrightness(new SKColor(255, 255, 180))
+                        ],
+                        [0f, 0.25f, 0.5f, 0.8f, 1f],
+                        SKShaderTileMode.Clamp);
+                }
+                else if (Scheme == ColorScheme.FireInverted)
+                {
+                    // Inverted flame: yellow/white at base -> orange -> red at tip
+                    shader = SKShader.CreateLinearGradient(
+                        new SKPoint(x, height),
+                        new SKPoint(x, y),
+                        [
+                            ApplyBrightness(new SKColor(255, 255, 180)),
+                            ApplyBrightness(new SKColor(255, 240, 60)),
+                            ApplyBrightness(new SKColor(255, 160, 0)),
+                            ApplyBrightness(new SKColor(255, 50, 0)),
+                            ApplyBrightness(new SKColor(120, 0, 0))
+                        ],
+                        [0f, 0.2f, 0.5f, 0.75f, 1f],
                         SKShaderTileMode.Clamp);
                 }
                 else
@@ -424,12 +486,14 @@ namespace InfoPanel.AudioSpectrum
         {
             int count = bands.Length;
             float totalBarWidth = width / count;
-            float gap = totalBarWidth * BarSpacing * 0.5f;
+            float gap = totalBarWidth * BarSpacing;
             float barWidth = totalBarWidth - gap;
-            int segmentsPerBar = 20;
-            float segmentGap = 1.5f;
+            int segmentsPerBar = 24;
+            // Segment height is ~40% of the pitch so the gap between segments is clearly visible
+            float pitch = height / segmentsPerBar;
+            float segHeight = pitch * 0.55f;
+            float segGap = pitch - segHeight;
 
-            // VU meter scale: bottom 60% green, 60-80% yellow, 80-100% red
             for (int i = 0; i < count; i++)
             {
                 float x = i * totalBarWidth + gap / 2;
@@ -438,58 +502,75 @@ namespace InfoPanel.AudioSpectrum
 
                 for (int s = 0; s < segmentsPerBar; s++)
                 {
-                    float segHeight = (height - (segmentsPerBar - 1) * segmentGap) / segmentsPerBar;
-                    float y = height - (s + 1) * (segHeight + segmentGap);
+                    float y = height - (s + 1) * pitch + segGap / 2;
                     float level = (float)s / segmentsPerBar;
 
-                    // VU color: green -> yellow -> red
                     SKColor segColor;
-                    if (level < 0.6f)
-                        segColor = new SKColor(0, 200, 0);
-                    else if (level < 0.8f)
-                        segColor = new SKColor(255, 220, 0);
+                    if (Scheme == ColorScheme.Fire)
+                    {
+                        // Flame gradient: dark red at base -> orange -> yellow at tip
+                        if (level < 0.3f)
+                            segColor = InterpolateColor(new SKColor(120, 0, 0), new SKColor(255, 50, 0), level / 0.3f);
+                        else if (level < 0.6f)
+                            segColor = InterpolateColor(new SKColor(255, 50, 0), new SKColor(255, 160, 0), (level - 0.3f) / 0.3f);
+                        else if (level < 0.85f)
+                            segColor = InterpolateColor(new SKColor(255, 160, 0), new SKColor(255, 240, 60), (level - 0.6f) / 0.25f);
+                        else
+                            segColor = InterpolateColor(new SKColor(255, 240, 60), new SKColor(255, 255, 180), (level - 0.85f) / 0.15f);
+                    }
+                    else if (Scheme == ColorScheme.FireInverted)
+                    {
+                        // Inverted: yellow/white at base -> orange -> red at tip
+                        float inv = 1f - level;
+                        if (inv < 0.3f)
+                            segColor = InterpolateColor(new SKColor(120, 0, 0), new SKColor(255, 50, 0), inv / 0.3f);
+                        else if (inv < 0.6f)
+                            segColor = InterpolateColor(new SKColor(255, 50, 0), new SKColor(255, 160, 0), (inv - 0.3f) / 0.3f);
+                        else if (inv < 0.85f)
+                            segColor = InterpolateColor(new SKColor(255, 160, 0), new SKColor(255, 240, 60), (inv - 0.6f) / 0.25f);
+                        else
+                            segColor = InterpolateColor(new SKColor(255, 240, 60), new SKColor(255, 255, 180), (inv - 0.85f) / 0.15f);
+                    }
                     else
-                        segColor = new SKColor(255, 30, 0);
+                    {
+                        // Classic LED VU: green -> yellow -> red
+                        if (level < 0.6f)
+                            segColor = new SKColor(0, 210, 0);
+                        else if (level < 0.8f)
+                            segColor = new SKColor(240, 200, 0);
+                        else
+                            segColor = new SKColor(255, 20, 0);
+                    }
 
                     bool active = s < activeSegments;
                     bool isPeak = ShowPeaks && s == peakSegment && peakSegment > 0;
 
                     if (active)
                     {
-                        using var paint = new SKPaint
-                        {
-                            IsAntialias = true,
-                            Color = ApplyBrightness(segColor)
-                        };
-                        canvas.DrawRect(x, y, barWidth, segHeight, paint);
+                        var lit = ApplyBrightness(segColor);
+                        using var paint = new SKPaint { IsAntialias = true, Color = lit };
+                        canvas.DrawRoundRect(new SKRect(x, y, x + barWidth, y + segHeight), 1, 1, paint);
 
-                        // Subtle glow on active segments
+                        // LED glow
                         using var glowPaint = new SKPaint
                         {
                             IsAntialias = true,
-                            Color = ApplyBrightness(segColor).WithAlpha(40),
-                            MaskFilter = SKMaskFilter.CreateBlur(SKBlurStyle.Normal, 2)
+                            Color = lit.WithAlpha(50),
+                            MaskFilter = SKMaskFilter.CreateBlur(SKBlurStyle.Normal, 2.5f)
                         };
-                        canvas.DrawRect(x - 1, y - 1, barWidth + 2, segHeight + 2, glowPaint);
+                        canvas.DrawRoundRect(new SKRect(x - 1, y - 1, x + barWidth + 1, y + segHeight + 1), 1, 1, glowPaint);
                     }
                     else if (isPeak)
                     {
-                        using var paint = new SKPaint
-                        {
-                            IsAntialias = true,
-                            Color = ApplyBrightness(segColor)
-                        };
-                        canvas.DrawRect(x, y, barWidth, segHeight, paint);
+                        var lit = ApplyBrightness(segColor);
+                        using var paint = new SKPaint { IsAntialias = true, Color = lit };
+                        canvas.DrawRoundRect(new SKRect(x, y, x + barWidth, y + segHeight), 1, 1, paint);
                     }
                     else
                     {
-                        // Dim inactive segment outline
-                        using var paint = new SKPaint
-                        {
-                            IsAntialias = true,
-                            Color = new SKColor(40, 40, 40, 50)
-                        };
-                        canvas.DrawRect(x, y, barWidth, segHeight, paint);
+                        // Dim unlit LED
+                        using var paint = new SKPaint { IsAntialias = true, Color = new SKColor(30, 30, 30, 60) };
+                        canvas.DrawRoundRect(new SKRect(x, y, x + barWidth, y + segHeight), 1, 1, paint);
                     }
                 }
             }
@@ -497,83 +578,110 @@ namespace InfoPanel.AudioSpectrum
 
         private void DrawVfd(SKCanvas canvas, float[] bands, float[] peaks, float width, float height)
         {
-            // VFD characteristic colors
-            var vfdBright = new SKColor(0, 255, 210);   // bright phosphor
-            var vfdMid = new SKColor(0, 204, 163);      // mid phosphor
-            var vfdDim = new SKColor(0, 80, 65);        // ghost segment
-            var vfdGlow = new SKColor(0, 255, 210, 50); // bloom
+            // VFD phosphor colors matching real vacuum fluorescent displays
+            var vfdBright = new SKColor(0, 230, 190);    // bright phosphor
+            var vfdDim = new SKColor(0, 230, 190, 12);   // ghost grid line
 
             int count = bands.Length;
             float totalBarWidth = width / count;
-            float gap = totalBarWidth * BarSpacing * 0.6f;
+            float gap = totalBarWidth * BarSpacing;
             float barWidth = totalBarWidth - gap;
-            int segmentsPerBar = 16;
-            float segmentGap = 2f;
-            float segHeight = (height - (segmentsPerBar - 1) * segmentGap) / segmentsPerBar;
+
+            // Many thin horizontal lines like a real VFD - line thickness ~1.5px with ~60% gap
+            int linesPerBar = Math.Max(16, (int)(height / 4.5f));
+            float pitch = height / linesPerBar;
+            float lineThickness = MathF.Max(1.2f, pitch * 0.4f);
+
+            // Overall phosphor glow across the whole display (subtle background bloom)
+            using var bgGlow = new SKPaint
+            {
+                IsAntialias = true,
+                Color = new SKColor(0, 180, 150, 8),
+                MaskFilter = SKMaskFilter.CreateBlur(SKBlurStyle.Normal, 6)
+            };
 
             for (int i = 0; i < count; i++)
             {
                 float x = i * totalBarWidth + gap / 2;
-                int activeSegments = (int)(bands[i] / 100f * segmentsPerBar);
-                int peakSegment = (int)(peaks[i] / 100f * segmentsPerBar);
+                int activeLines = (int)(bands[i] / 100f * linesPerBar);
+                int peakLine = (int)(peaks[i] / 100f * linesPerBar);
 
-                for (int s = 0; s < segmentsPerBar; s++)
+                for (int s = 0; s < linesPerBar; s++)
                 {
-                    float y = height - (s + 1) * (segHeight + segmentGap);
-                    bool active = s < activeSegments;
-                    bool isPeak = ShowPeaks && s == peakSegment && peakSegment > 0;
+                    float y = height - (s + 0.5f) * pitch;
+                    bool active = s < activeLines;
+                    bool isPeak = ShowPeaks && s == peakLine && peakLine > 0;
 
                     if (active)
                     {
-                        // Intensity increases with height
-                        float intensity = (float)s / segmentsPerBar;
-                        var color = InterpolateColor(vfdMid, vfdBright, intensity);
-                        color = ApplyBrightness(color);
+                        // Brighter toward the top of the active area
+                        float intensity = (float)s / linesPerBar;
+                        byte alpha = (byte)(180 + intensity * 75);
+                        var color = ApplyBrightness(vfdBright).WithAlpha(alpha);
 
-                        // Segment body
+                        // Thin horizontal phosphor line
                         using var paint = new SKPaint
                         {
                             IsAntialias = true,
-                            Color = color
+                            Color = color,
+                            StrokeWidth = lineThickness,
+                            StrokeCap = SKStrokeCap.Butt
                         };
-                        canvas.DrawRoundRect(new SKRect(x, y, x + barWidth, y + segHeight), 1.5f, 1.5f, paint);
+                        canvas.DrawLine(x, y, x + barWidth, y, paint);
 
-                        // Phosphor bloom
+                        // Phosphor bloom (soft glow around each lit line)
                         using var bloomPaint = new SKPaint
                         {
                             IsAntialias = true,
-                            Color = color.WithAlpha((byte)(30 + intensity * 40)),
-                            MaskFilter = SKMaskFilter.CreateBlur(SKBlurStyle.Normal, 3 + intensity * 2)
+                            Color = color.WithAlpha((byte)(25 + intensity * 30)),
+                            StrokeWidth = lineThickness + 3,
+                            StrokeCap = SKStrokeCap.Butt,
+                            MaskFilter = SKMaskFilter.CreateBlur(SKBlurStyle.Normal, 2)
                         };
-                        canvas.DrawRoundRect(new SKRect(x - 2, y - 1, x + barWidth + 2, y + segHeight + 1), 2, 2, bloomPaint);
+                        canvas.DrawLine(x - 1, y, x + barWidth + 1, y, bloomPaint);
                     }
                     else if (isPeak)
                     {
+                        // Peak: bright single line
+                        var color = ApplyBrightness(vfdBright);
                         using var paint = new SKPaint
                         {
                             IsAntialias = true,
-                            Color = ApplyBrightness(vfdBright)
+                            Color = color,
+                            StrokeWidth = lineThickness,
+                            StrokeCap = SKStrokeCap.Butt
                         };
-                        canvas.DrawRoundRect(new SKRect(x, y, x + barWidth, y + segHeight), 1.5f, 1.5f, paint);
+                        canvas.DrawLine(x, y, x + barWidth, y, paint);
 
                         using var bloomPaint = new SKPaint
                         {
                             IsAntialias = true,
-                            Color = ApplyBrightness(vfdGlow),
-                            MaskFilter = SKMaskFilter.CreateBlur(SKBlurStyle.Normal, 4)
+                            Color = color.WithAlpha(35),
+                            StrokeWidth = lineThickness + 4,
+                            StrokeCap = SKStrokeCap.Butt,
+                            MaskFilter = SKMaskFilter.CreateBlur(SKBlurStyle.Normal, 3)
                         };
-                        canvas.DrawRoundRect(new SKRect(x - 2, y - 1, x + barWidth + 2, y + segHeight + 1), 2, 2, bloomPaint);
+                        canvas.DrawLine(x - 1, y, x + barWidth + 1, y, bloomPaint);
                     }
                     else
                     {
-                        // Ghost segment (characteristic VFD look)
+                        // Ghost grid line (faint unlit phosphor, characteristic VFD look)
                         using var paint = new SKPaint
                         {
                             IsAntialias = true,
-                            Color = vfdDim.WithAlpha(25)
+                            Color = vfdDim,
+                            StrokeWidth = lineThickness * 0.6f,
+                            StrokeCap = SKStrokeCap.Butt
                         };
-                        canvas.DrawRoundRect(new SKRect(x, y, x + barWidth, y + segHeight), 1.5f, 1.5f, paint);
+                        canvas.DrawLine(x, y, x + barWidth, y, paint);
                     }
+                }
+
+                // Column-level glow for active bars (ambient phosphor scatter)
+                if (activeLines > 2)
+                {
+                    float barHeight = activeLines * pitch;
+                    canvas.DrawRect(x - 1, height - barHeight, barWidth + 2, barHeight, bgGlow);
                 }
             }
         }
@@ -638,6 +746,8 @@ namespace InfoPanel.AudioSpectrum
                     new SKColor(0, 255, 128), new SKColor(0, 200, 255), new SKColor(180, 0, 255)),
                 ColorScheme.Fire => InterpolateColors(position, intensity,
                     new SKColor(255, 60, 0), new SKColor(255, 180, 0), new SKColor(255, 255, 100)),
+                ColorScheme.FireInverted => InterpolateColors(position, intensity,
+                    new SKColor(255, 255, 100), new SKColor(255, 180, 0), new SKColor(255, 60, 0)),
                 ColorScheme.Ice => InterpolateColors(position, intensity,
                     new SKColor(100, 200, 255), new SKColor(150, 230, 255), new SKColor(220, 240, 255)),
                 ColorScheme.Rainbow => HSLtoRGB(position * 360f, 1f, 0.3f + intensity * 0.3f),

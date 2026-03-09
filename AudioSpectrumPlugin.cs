@@ -63,7 +63,9 @@ namespace InfoPanel.AudioSpectrum
                 Alignment = _config.Alignment,
                 ContentWidth = _config.ContentWidth,
                 CenterOut = _config.CenterOut,
-                EdgeBoost = _config.EdgeBoost
+                EdgeBoost = _config.EdgeBoost,
+                NoiseFloor = _config.NoiseFloor,
+                TrimBands = _config.TrimBands
             };
 
             // Start HTTP server
@@ -307,6 +309,21 @@ namespace InfoPanel.AudioSpectrum
                 case "EdgeBoost":
                     if (value is double eb) { _config.EdgeBoost = (float)eb; if (_renderer != null) _renderer.EdgeBoost = _config.EdgeBoost; }
                     break;
+                case "NoiseFloor":
+                    if (value is double nf) { _config.NoiseFloor = (float)nf; if (_renderer != null) _renderer.NoiseFloor = _config.NoiseFloor; }
+                    break;
+                case "TrimBands":
+                    if (value is int tb) { _config.TrimBands = Math.Clamp(tb, 0, 20); if (_renderer != null) _renderer.TrimBands = _config.TrimBands; }
+                    break;
+                case "BandCount":
+                    if (value is int bc) { _config.BandCount = Math.Clamp(bc, 8, 128); }
+                    break;
+                case "ImageWidth":
+                    if (value is int iw) { _config.ImageWidth = Math.Clamp(iw, 100, 3840); }
+                    break;
+                case "ImageHeight":
+                    if (value is int ih) { _config.ImageHeight = Math.Clamp(ih, 50, 2160); }
+                    break;
                 case "AudioDevice":
                     if (value is string device)
                     {
@@ -346,6 +363,7 @@ namespace InfoPanel.AudioSpectrum
             }
 
             _config.Save();
+            _configProperties = null; // rebuild with current values on next read
         }
 
         private List<PluginConfigProperty> BuildConfigProperties()
@@ -357,6 +375,13 @@ namespace InfoPanel.AudioSpectrum
                 new() { Key = "FollowWaveLink", DisplayName = "Follow Elgato Wave Link", Type = PluginConfigType.Boolean,
                     Value = _config.FollowWaveLink,
                     Description = "Capture all Wave Link virtual channels. Overrides Audio Device when active." },
+                new() { Key = "BandCount", DisplayName = "Band Count", Type = PluginConfigType.Integer,
+                    Value = _config.BandCount, MinValue = 8, MaxValue = 128, Step = 1,
+                    Description = "Number of frequency bands. Requires plugin restart to apply." },
+                new() { Key = "ImageWidth", DisplayName = "Image Width", Type = PluginConfigType.Integer,
+                    Value = _config.ImageWidth, MinValue = 100, MaxValue = 3840, Step = 10 },
+                new() { Key = "ImageHeight", DisplayName = "Image Height", Type = PluginConfigType.Integer,
+                    Value = _config.ImageHeight, MinValue = 50, MaxValue = 2160, Step = 10 },
                 new() { Key = "Style", DisplayName = "Style", Type = PluginConfigType.Choice,
                     Value = _config.Style.ToString(),
                     Options = Enum.GetNames<SpectrumStyle>() },
@@ -395,6 +420,12 @@ namespace InfoPanel.AudioSpectrum
                 new() { Key = "EdgeBoost", DisplayName = "Edge Boost", Type = PluginConfigType.Double,
                     Value = (double)_config.EdgeBoost, MinValue = 1, MaxValue = 15, Step = 1,
                     Description = "Only applies when Center Out is enabled" },
+                new() { Key = "NoiseFloor", DisplayName = "Noise Floor", Type = PluginConfigType.Double,
+                    Value = (double)_config.NoiseFloor, MinValue = 0, MaxValue = 1.0, Step = 0.05,
+                    Description = "Minimum band level as fraction of average. 0 = off, 0.5 = half of average." },
+                new() { Key = "TrimBands", DisplayName = "Trim Bands", Type = PluginConfigType.Integer,
+                    Value = _config.TrimBands, MinValue = 0, MaxValue = 20, Step = 1,
+                    Description = "Number of bands to cut from each side (removes low-energy edges)" },
             ];
         }
 
