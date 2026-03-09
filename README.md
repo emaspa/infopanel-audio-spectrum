@@ -2,7 +2,13 @@
 
 A real-time audio spectrum visualizer plugin for [InfoPanel](https://github.com/habibrehmansg/infopanel). Captures your system audio output and renders a customizable spectrum visualization that you can display on your USB LCD panel or desktop overlay.
 
-<!-- TODO: Add screenshots here -->
+| Rounded + Neon + CenterOut | Classic + CenterOut + Reflection |
+|:---:|:---:|
+| ![Neon Rounded](screenshots/neon-rounded.png) | ![Classic CenterOut](screenshots/classic-centerout.png) |
+
+| Wave + Neon + Reflection | Wave + Fire | Dots + Classic + CenterOut |
+|:---:|:---:|:---:|
+| ![Wave Neon](screenshots/wave-neon.png) | ![Wave Fire](screenshots/wave-fire.png) | ![Dots Classic](screenshots/dots-classic.png) |
 
 ## How It Works
 
