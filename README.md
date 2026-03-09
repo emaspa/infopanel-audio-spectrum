@@ -131,7 +131,7 @@ FollowWaveLink = false
 
 | Setting | Default | Values | Description |
 |---------|---------|--------|-------------|
-| `Style` | `Bars` | `Bars`, `Rounded`, `Wave`, `Dots`, `Mirror` | Rendering style (see [Styles](#styles) below). |
+| `Style` | `Bars` | `Bars`, `Rounded`, `Wave`, `Dots`, `Mirror`, `VuMeter`, `Vfd` | Rendering style (see [Styles](#styles) below). |
 | `ColorScheme` | `Neon` | `Neon`, `Fire`, `Ice`, `Rainbow`, `Ocean`, `Monochrome`, `Classic`, `Custom` | Color scheme (see [Color Schemes](#color-schemes) below). |
 | `BarSpacing` | `0.3` | 0.0 - 0.8 | Gap between bars as a fraction of bar width. `0` = no gap, `0.5` = gap equal to bar width. |
 | `CornerRadius` | `4` | 0 - 20 | Corner rounding in pixels. Mainly affects the `Rounded` style. |
@@ -168,6 +168,8 @@ FollowWaveLink = false
 - **Wave** - Smooth curve connecting the frequency bands with a glow effect and filled area beneath.
 - **Dots** - Matrix-style dot display with 16 dots per column. Active dots glow, inactive dots are dimmed.
 - **Mirror** - Bars extend both up and down from a center line, creating a symmetrical waveform effect.
+- **VuMeter** - Segmented bars with classic green/yellow/red VU meter coloring. 20 segments per column with subtle glow on active segments.
+- **Vfd** - Vacuum fluorescent display style with cyan-green phosphor colors, rounded segments, phosphor bloom effect, and dim ghost segments for the characteristic VFD look.
 
 ### Color Schemes
 
