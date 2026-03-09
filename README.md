@@ -330,6 +330,12 @@ For more details, see the [InfoPanel plugin documentation](https://github.com/ha
 - **Streaming**: Minimal AVI/MJPEG HTTP server for real-time frame delivery
 - **Update rate**: ~10 FPS (100ms interval)
 
+## Support
+
+If you find this plugin useful, consider supporting the project:
+
+[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-ffdd00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/emaspa)
+
 ## License
 
 MIT
