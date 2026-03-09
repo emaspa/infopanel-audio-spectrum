@@ -72,8 +72,6 @@ C:\ProgramData\InfoPanel\plugins\InfoPanel.AudioSpectrum\InfoPanel.AudioSpectrum
 
 The config file is auto-generated with defaults on first run. Edit it with any text editor and restart the plugin (disable/enable on the Plugins page) to apply changes.
 
-> **Note:** InfoPanel 1.4.x supports live configuration through the Plugins page UI. With that version, changes apply immediately without restarting the plugin.
-
 ### Example config
 
 ```ini
