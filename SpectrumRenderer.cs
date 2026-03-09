@@ -8,7 +8,9 @@ namespace InfoPanel.AudioSpectrum
         Rounded,
         Wave,
         Dots,
-        Mirror
+        Mirror,
+        VuMeter,
+        Vfd
     }
 
     internal enum ColorScheme
@@ -117,6 +119,12 @@ namespace InfoPanel.AudioSpectrum
                     break;
                 case SpectrumStyle.Mirror:
                     DrawMirror(canvas, bands, peaks, contentW, height);
+                    break;
+                case SpectrumStyle.VuMeter:
+                    DrawVuMeter(canvas, bands, peaks, contentW, height);
+                    break;
+                case SpectrumStyle.Vfd:
+                    DrawVfd(canvas, bands, peaks, contentW, drawHeight);
                     break;
             }
 
@@ -408,6 +416,164 @@ namespace InfoPanel.AudioSpectrum
                     };
                     canvas.DrawRect(x, midY - peakOffset - 2, barWidth, 3, peakPaint);
                     canvas.DrawRect(x, midY + peakOffset - 1, barWidth, 3, peakPaint);
+                }
+            }
+        }
+
+        private void DrawVuMeter(SKCanvas canvas, float[] bands, float[] peaks, float width, float height)
+        {
+            int count = bands.Length;
+            float totalBarWidth = width / count;
+            float gap = totalBarWidth * BarSpacing * 0.5f;
+            float barWidth = totalBarWidth - gap;
+            int segmentsPerBar = 20;
+            float segmentGap = 1.5f;
+
+            // VU meter scale: bottom 60% green, 60-80% yellow, 80-100% red
+            for (int i = 0; i < count; i++)
+            {
+                float x = i * totalBarWidth + gap / 2;
+                int activeSegments = (int)(bands[i] / 100f * segmentsPerBar);
+                int peakSegment = (int)(peaks[i] / 100f * segmentsPerBar);
+
+                for (int s = 0; s < segmentsPerBar; s++)
+                {
+                    float segHeight = (height - (segmentsPerBar - 1) * segmentGap) / segmentsPerBar;
+                    float y = height - (s + 1) * (segHeight + segmentGap);
+                    float level = (float)s / segmentsPerBar;
+
+                    // VU color: green -> yellow -> red
+                    SKColor segColor;
+                    if (level < 0.6f)
+                        segColor = new SKColor(0, 200, 0);
+                    else if (level < 0.8f)
+                        segColor = new SKColor(255, 220, 0);
+                    else
+                        segColor = new SKColor(255, 30, 0);
+
+                    bool active = s < activeSegments;
+                    bool isPeak = ShowPeaks && s == peakSegment && peakSegment > 0;
+
+                    if (active)
+                    {
+                        using var paint = new SKPaint
+                        {
+                            IsAntialias = true,
+                            Color = ApplyBrightness(segColor)
+                        };
+                        canvas.DrawRect(x, y, barWidth, segHeight, paint);
+
+                        // Subtle glow on active segments
+                        using var glowPaint = new SKPaint
+                        {
+                            IsAntialias = true,
+                            Color = ApplyBrightness(segColor).WithAlpha(40),
+                            MaskFilter = SKMaskFilter.CreateBlur(SKBlurStyle.Normal, 2)
+                        };
+                        canvas.DrawRect(x - 1, y - 1, barWidth + 2, segHeight + 2, glowPaint);
+                    }
+                    else if (isPeak)
+                    {
+                        using var paint = new SKPaint
+                        {
+                            IsAntialias = true,
+                            Color = ApplyBrightness(segColor)
+                        };
+                        canvas.DrawRect(x, y, barWidth, segHeight, paint);
+                    }
+                    else
+                    {
+                        // Dim inactive segment outline
+                        using var paint = new SKPaint
+                        {
+                            IsAntialias = true,
+                            Color = new SKColor(40, 40, 40, 50)
+                        };
+                        canvas.DrawRect(x, y, barWidth, segHeight, paint);
+                    }
+                }
+            }
+        }
+
+        private void DrawVfd(SKCanvas canvas, float[] bands, float[] peaks, float width, float height)
+        {
+            // VFD characteristic colors
+            var vfdBright = new SKColor(0, 255, 210);   // bright phosphor
+            var vfdMid = new SKColor(0, 204, 163);      // mid phosphor
+            var vfdDim = new SKColor(0, 80, 65);        // ghost segment
+            var vfdGlow = new SKColor(0, 255, 210, 50); // bloom
+
+            int count = bands.Length;
+            float totalBarWidth = width / count;
+            float gap = totalBarWidth * BarSpacing * 0.6f;
+            float barWidth = totalBarWidth - gap;
+            int segmentsPerBar = 16;
+            float segmentGap = 2f;
+            float segHeight = (height - (segmentsPerBar - 1) * segmentGap) / segmentsPerBar;
+
+            for (int i = 0; i < count; i++)
+            {
+                float x = i * totalBarWidth + gap / 2;
+                int activeSegments = (int)(bands[i] / 100f * segmentsPerBar);
+                int peakSegment = (int)(peaks[i] / 100f * segmentsPerBar);
+
+                for (int s = 0; s < segmentsPerBar; s++)
+                {
+                    float y = height - (s + 1) * (segHeight + segmentGap);
+                    bool active = s < activeSegments;
+                    bool isPeak = ShowPeaks && s == peakSegment && peakSegment > 0;
+
+                    if (active)
+                    {
+                        // Intensity increases with height
+                        float intensity = (float)s / segmentsPerBar;
+                        var color = InterpolateColor(vfdMid, vfdBright, intensity);
+                        color = ApplyBrightness(color);
+
+                        // Segment body
+                        using var paint = new SKPaint
+                        {
+                            IsAntialias = true,
+                            Color = color
+                        };
+                        canvas.DrawRoundRect(new SKRect(x, y, x + barWidth, y + segHeight), 1.5f, 1.5f, paint);
+
+                        // Phosphor bloom
+                        using var bloomPaint = new SKPaint
+                        {
+                            IsAntialias = true,
+                            Color = color.WithAlpha((byte)(30 + intensity * 40)),
+                            MaskFilter = SKMaskFilter.CreateBlur(SKBlurStyle.Normal, 3 + intensity * 2)
+                        };
+                        canvas.DrawRoundRect(new SKRect(x - 2, y - 1, x + barWidth + 2, y + segHeight + 1), 2, 2, bloomPaint);
+                    }
+                    else if (isPeak)
+                    {
+                        using var paint = new SKPaint
+                        {
+                            IsAntialias = true,
+                            Color = ApplyBrightness(vfdBright)
+                        };
+                        canvas.DrawRoundRect(new SKRect(x, y, x + barWidth, y + segHeight), 1.5f, 1.5f, paint);
+
+                        using var bloomPaint = new SKPaint
+                        {
+                            IsAntialias = true,
+                            Color = ApplyBrightness(vfdGlow),
+                            MaskFilter = SKMaskFilter.CreateBlur(SKBlurStyle.Normal, 4)
+                        };
+                        canvas.DrawRoundRect(new SKRect(x - 2, y - 1, x + barWidth + 2, y + segHeight + 1), 2, 2, bloomPaint);
+                    }
+                    else
+                    {
+                        // Ghost segment (characteristic VFD look)
+                        using var paint = new SKPaint
+                        {
+                            IsAntialias = true,
+                            Color = vfdDim.WithAlpha(25)
+                        };
+                        canvas.DrawRoundRect(new SKRect(x, y, x + barWidth, y + segHeight), 1.5f, 1.5f, paint);
+                    }
                 }
             }
         }
