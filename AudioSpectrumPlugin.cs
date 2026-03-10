@@ -59,6 +59,7 @@ namespace InfoPanel.AudioSpectrum
                 CornerRadius = _config.Style == SpectrumStyle.Rounded ? MathF.Max(_config.CornerRadius, 10f) : _config.CornerRadius,
                 ShowPeaks = _config.ShowPeaks,
                 ShowReflection = _config.ShowReflection,
+                ShowMirror = _config.ShowMirror,
                 Brightness = _config.Brightness,
                 Alignment = _config.Alignment,
                 ContentWidth = _config.ContentWidth,
@@ -279,7 +280,26 @@ namespace InfoPanel.AudioSpectrum
                     if (value is bool peaks) { _config.ShowPeaks = peaks; if (_renderer != null) _renderer.ShowPeaks = peaks; }
                     break;
                 case "ShowReflection":
-                    if (value is bool refl) { _config.ShowReflection = refl; if (_renderer != null) _renderer.ShowReflection = refl; }
+                    if (value is bool refl) {
+                        _config.ShowReflection = refl;
+                        if (refl) {
+                            _config.ShowMirror = false;
+                            if (_renderer != null) _renderer.ShowMirror = false;
+                            UpdateConfigPropertyValue("ShowMirror", false);
+                        }
+                        if (_renderer != null) _renderer.ShowReflection = refl;
+                    }
+                    break;
+                case "ShowMirror":
+                    if (value is bool mirr) {
+                        _config.ShowMirror = mirr;
+                        if (mirr) {
+                            _config.ShowReflection = false;
+                            if (_renderer != null) _renderer.ShowReflection = false;
+                            UpdateConfigPropertyValue("ShowReflection", false);
+                        }
+                        if (_renderer != null) _renderer.ShowMirror = mirr;
+                    }
                     break;
                 case "Brightness":
                     if (value is double bright) { _config.Brightness = (float)bright; if (_renderer != null) _renderer.Brightness = _config.Brightness; }
@@ -366,6 +386,13 @@ namespace InfoPanel.AudioSpectrum
             _configProperties = null; // rebuild with current values on next read
         }
 
+        private void UpdateConfigPropertyValue(string key, object? newValue)
+        {
+            if (_configProperties == null) return;
+            var prop = _configProperties.Find(p => p.Key == key);
+            if (prop != null) prop.Value = newValue;
+        }
+
         private List<PluginConfigProperty> BuildConfigProperties()
         {
             return
@@ -402,6 +429,8 @@ namespace InfoPanel.AudioSpectrum
                     Value = _config.ShowPeaks },
                 new() { Key = "ShowReflection", DisplayName = "Show Reflection", Type = PluginConfigType.Boolean,
                     Value = _config.ShowReflection },
+                new() { Key = "ShowMirror", DisplayName = "Show Mirror", Type = PluginConfigType.Boolean,
+                    Value = _config.ShowMirror },
                 new() { Key = "Brightness", DisplayName = "Brightness", Type = PluginConfigType.Double,
                     Value = (double)_config.Brightness, MinValue = 0.1, MaxValue = 2.0, Step = 0.1 },
                 new() { Key = "Smoothing", DisplayName = "Smoothing", Type = PluginConfigType.Double,

@@ -11,6 +11,8 @@ namespace InfoPanel.AudioSpectrum
         Mirror,
         VuMeter,
         VFD,
+        VFDOrange,
+        VFDClassic,
         AnalogVU
     }
 
@@ -26,6 +28,8 @@ namespace InfoPanel.AudioSpectrum
         Classic,
         Custom
     }
+
+    internal enum VfdColorMode { Cyan, Orange, Classic }
 
     internal enum SpectrumAlignment
     {
@@ -50,6 +54,7 @@ namespace InfoPanel.AudioSpectrum
         public float CornerRadius { get; set; } = 4f;
         public bool ShowPeaks { get; set; } = true;
         public bool ShowReflection { get; set; } = false;
+        public bool ShowMirror { get; set; } = false;
         public float Brightness { get; set; } = 1.0f;
         public SpectrumAlignment Alignment { get; set; } = SpectrumAlignment.Left;
         public float ContentWidth { get; set; } = 1.0f; // 0-1, fraction of image width used by spectrum
@@ -132,7 +137,7 @@ namespace InfoPanel.AudioSpectrum
                 peaks = peaks[TrimBands..^TrimBands];
             }
 
-            float drawHeight = ShowReflection ? height * 0.6f : height;
+            float drawHeight = (ShowReflection || ShowMirror) ? height * 0.5f : height;
 
             switch (Style)
             {
@@ -155,14 +160,24 @@ namespace InfoPanel.AudioSpectrum
                     DrawVuMeter(canvas, bands, peaks, contentW, height);
                     break;
                 case SpectrumStyle.VFD:
-                    DrawVfd(canvas, bands, peaks, contentW, drawHeight);
+                    DrawVfd(canvas, bands, peaks, contentW, drawHeight, VfdColorMode.Cyan);
+                    break;
+                case SpectrumStyle.VFDOrange:
+                    DrawVfd(canvas, bands, peaks, contentW, drawHeight, VfdColorMode.Orange);
+                    break;
+                case SpectrumStyle.VFDClassic:
+                    DrawVfd(canvas, bands, peaks, contentW, drawHeight, VfdColorMode.Classic);
                     break;
                 case SpectrumStyle.AnalogVU:
                     DrawAnalogVU(canvas, bands, peaks, contentW, height);
                     break;
             }
 
-            if (ShowReflection && Style != SpectrumStyle.Mirror)
+            if (ShowMirror && Style != SpectrumStyle.Mirror)
+            {
+                DrawMirrorReflection(canvas, contentW, drawHeight, height);
+            }
+            else if (ShowReflection && Style != SpectrumStyle.Mirror)
             {
                 DrawReflection(canvas, contentW, drawHeight, height);
             }
@@ -580,11 +595,31 @@ namespace InfoPanel.AudioSpectrum
             }
         }
 
-        private void DrawVfd(SKCanvas canvas, float[] bands, float[] peaks, float width, float height)
+        private void DrawVfd(SKCanvas canvas, float[] bands, float[] peaks, float width, float height, VfdColorMode colorMode = VfdColorMode.Cyan)
         {
-            // VFD phosphor colors matching real vacuum fluorescent displays
-            var vfdBright = new SKColor(0, 230, 190);    // bright phosphor
-            var vfdDim = new SKColor(0, 230, 190, 12);   // ghost grid line
+            // VFD phosphor colors per mode
+            SKColor vfdBright, vfdDim, vfdGlow, vfdRed;
+            switch (colorMode)
+            {
+                case VfdColorMode.Orange:
+                    vfdBright = new SKColor(255, 160, 20);
+                    vfdDim = new SKColor(255, 160, 20, 12);
+                    vfdGlow = new SKColor(200, 120, 10, 8);
+                    vfdRed = default; // unused
+                    break;
+                case VfdColorMode.Classic:
+                    vfdBright = new SKColor(0, 230, 190);
+                    vfdDim = new SKColor(0, 230, 190, 12);
+                    vfdGlow = new SKColor(0, 180, 150, 8);
+                    vfdRed = new SKColor(255, 40, 30);
+                    break;
+                default: // Cyan
+                    vfdBright = new SKColor(0, 230, 190);
+                    vfdDim = new SKColor(0, 230, 190, 12);
+                    vfdGlow = new SKColor(0, 180, 150, 8);
+                    vfdRed = default; // unused
+                    break;
+            }
 
             int count = bands.Length;
             float totalBarWidth = width / count;
@@ -600,9 +635,12 @@ namespace InfoPanel.AudioSpectrum
             using var bgGlow = new SKPaint
             {
                 IsAntialias = true,
-                Color = new SKColor(0, 180, 150, 8),
+                Color = vfdGlow,
                 MaskFilter = SKMaskFilter.CreateBlur(SKBlurStyle.Normal, 6)
             };
+
+            // Threshold for red zone in Classic mode (top 1/3)
+            float redThreshold = colorMode == VfdColorMode.Classic ? 1f / 3f : float.MaxValue;
 
             for (int i = 0; i < count; i++)
             {
@@ -621,7 +659,9 @@ namespace InfoPanel.AudioSpectrum
                         // Brighter toward the top of the active area
                         float intensity = (float)s / linesPerBar;
                         byte alpha = (byte)(180 + intensity * 75);
-                        var color = ApplyBrightness(vfdBright).WithAlpha(alpha);
+                        bool inRedZone = intensity >= redThreshold;
+                        var baseColor = inRedZone ? vfdRed : vfdBright;
+                        var color = ApplyBrightness(baseColor).WithAlpha(alpha);
 
                         // Thin horizontal phosphor line
                         using var paint = new SKPaint
@@ -647,7 +687,9 @@ namespace InfoPanel.AudioSpectrum
                     else if (isPeak)
                     {
                         // Peak: bright single line
-                        var color = ApplyBrightness(vfdBright);
+                        float peakIntensity = (float)s / linesPerBar;
+                        bool peakInRedZone = peakIntensity >= redThreshold;
+                        var color = ApplyBrightness(peakInRedZone ? vfdRed : vfdBright);
                         using var paint = new SKPaint
                         {
                             IsAntialias = true,
@@ -997,6 +1039,24 @@ namespace InfoPanel.AudioSpectrum
                 Color = SKColors.Black.WithAlpha(180)
             };
             canvas.DrawRect(0, mainHeight, width, reflectionHeight, fadePaint);
+        }
+
+        private void DrawMirrorReflection(SKCanvas canvas, float width, float mainHeight, float totalHeight)
+        {
+            float mirrorHeight = totalHeight - mainHeight;
+
+            // Extract the main area pixels
+            var info = new SKImageInfo((int)width, (int)mainHeight);
+            using var mainPixels = new SKBitmap(info);
+            _bitmap!.ExtractSubset(mainPixels, new SKRectI(0, 0, (int)width, (int)mainHeight));
+
+            // Draw flipped 1:1 copy below
+            canvas.Save();
+            canvas.Translate(0, totalHeight);
+            canvas.Scale(1, -1);
+            canvas.DrawBitmap(mainPixels, new SKRect(0, 0, width, mainHeight),
+                new SKRect(0, 0, width, mirrorHeight));
+            canvas.Restore();
         }
 
         private SKColor GetBandColor(int bandIndex, int bandCount, float intensity)

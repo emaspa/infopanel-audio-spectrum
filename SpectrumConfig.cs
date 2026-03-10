@@ -33,6 +33,7 @@ namespace InfoPanel.AudioSpectrum
         public float CornerRadius { get; set; } = 4f;
         public bool ShowPeaks { get; set; } = true;
         public bool ShowReflection { get; set; } = false;
+        public bool ShowMirror { get; set; } = false;
         public float Brightness { get; set; } = 1.0f;
         public float Smoothing { get; set; } = 0.3f;
         public float PeakDecay { get; set; } = 0.02f;
@@ -76,6 +77,7 @@ namespace InfoPanel.AudioSpectrum
             SetDefault("CornerRadius", "4");
             SetDefault("ShowPeaks", "true");
             SetDefault("ShowReflection", "false");
+            SetDefault("ShowMirror", "false");
             SetDefault("Brightness", "1.0");
             SetDefault("Smoothing", "0.3");
             SetDefault("PeakDecay", "0.02");
@@ -145,6 +147,7 @@ namespace InfoPanel.AudioSpectrum
             CornerRadius = GetFloat("CornerRadius", 4f);
             ShowPeaks = GetBool("ShowPeaks", true);
             ShowReflection = GetBool("ShowReflection", false);
+            ShowMirror = GetBool("ShowMirror", false);
             Brightness = GetFloat("Brightness", 1.0f);
             Smoothing = GetFloat("Smoothing", 0.3f);
             PeakDecay = GetFloat("PeakDecay", 0.02f);
@@ -224,6 +227,7 @@ namespace InfoPanel.AudioSpectrum
             _iniData[SECTION]["CornerRadius"] = CornerRadius.ToString(System.Globalization.CultureInfo.InvariantCulture);
             _iniData[SECTION]["ShowPeaks"] = ShowPeaks.ToString().ToLower();
             _iniData[SECTION]["ShowReflection"] = ShowReflection.ToString().ToLower();
+            _iniData[SECTION]["ShowMirror"] = ShowMirror.ToString().ToLower();
             _iniData[SECTION]["Brightness"] = Brightness.ToString(System.Globalization.CultureInfo.InvariantCulture);
             _iniData[SECTION]["Smoothing"] = Smoothing.ToString(System.Globalization.CultureInfo.InvariantCulture);
             _iniData[SECTION]["PeakDecay"] = PeakDecay.ToString(System.Globalization.CultureInfo.InvariantCulture);
