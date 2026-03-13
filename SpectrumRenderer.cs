@@ -10,9 +10,11 @@ namespace InfoPanel.AudioSpectrum
         Dots,
         Mirror,
         VuMeter,
+        Lines,
         VFD,
         VFDOrange,
         VFDClassic,
+        VFDOrangeRed,
         AnalogVU
     }
 
@@ -29,7 +31,7 @@ namespace InfoPanel.AudioSpectrum
         Custom
     }
 
-    internal enum VfdColorMode { Cyan, Orange, Classic }
+    internal enum VfdColorMode { Cyan, Orange, Classic, OrangeRed }
 
     internal enum SpectrumAlignment
     {
@@ -159,6 +161,9 @@ namespace InfoPanel.AudioSpectrum
                 case SpectrumStyle.VuMeter:
                     DrawVuMeter(canvas, bands, peaks, contentW, height);
                     break;
+                case SpectrumStyle.Lines:
+                    DrawLines(canvas, bands, peaks, contentW, drawHeight);
+                    break;
                 case SpectrumStyle.VFD:
                     DrawVfd(canvas, bands, peaks, contentW, drawHeight, VfdColorMode.Cyan);
                     break;
@@ -167,6 +172,9 @@ namespace InfoPanel.AudioSpectrum
                     break;
                 case SpectrumStyle.VFDClassic:
                     DrawVfd(canvas, bands, peaks, contentW, drawHeight, VfdColorMode.Classic);
+                    break;
+                case SpectrumStyle.VFDOrangeRed:
+                    DrawVfd(canvas, bands, peaks, contentW, drawHeight, VfdColorMode.OrangeRed);
                     break;
                 case SpectrumStyle.AnalogVU:
                     DrawAnalogVU(canvas, bands, peaks, contentW, height);
@@ -595,6 +603,98 @@ namespace InfoPanel.AudioSpectrum
             }
         }
 
+        private void DrawLines(SKCanvas canvas, float[] bands, float[] peaks, float width, float height)
+        {
+            int count = bands.Length;
+            float totalBarWidth = width / count;
+            float gap = totalBarWidth * BarSpacing;
+            float barWidth = totalBarWidth - gap;
+
+            int linesPerBar = Math.Max(16, (int)(height / 4.5f));
+            float pitch = height / linesPerBar;
+            float lineThickness = MathF.Max(1.2f, pitch * 0.4f);
+
+            for (int i = 0; i < count; i++)
+            {
+                float x = i * totalBarWidth + gap / 2;
+                int activeLines = (int)(bands[i] / 100f * linesPerBar);
+                int peakLine = (int)(peaks[i] / 100f * linesPerBar);
+                var bandColor = GetBandColor(i, count, bands[i] / 100f);
+
+                for (int s = 0; s < linesPerBar; s++)
+                {
+                    float y = height - (s + 0.5f) * pitch;
+                    bool active = s < activeLines;
+                    bool isPeak = ShowPeaks && s == peakLine && peakLine > 0;
+
+                    if (active)
+                    {
+                        float intensity = (float)s / linesPerBar;
+                        byte alpha = (byte)(180 + intensity * 75);
+
+                        // Use color scheme gradient within the bar
+                        var lineColor = LerpColor(
+                            GetBandColor(i, count, 0.2f),
+                            bandColor,
+                            intensity);
+                        var color = ApplyBrightness(lineColor).WithAlpha(alpha);
+
+                        using var paint = new SKPaint
+                        {
+                            IsAntialias = true,
+                            Color = color,
+                            StrokeWidth = lineThickness,
+                            StrokeCap = SKStrokeCap.Butt
+                        };
+                        canvas.DrawLine(x, y, x + barWidth, y, paint);
+
+                        using var bloomPaint = new SKPaint
+                        {
+                            IsAntialias = true,
+                            Color = color.WithAlpha((byte)(20 + intensity * 25)),
+                            StrokeWidth = lineThickness + 3,
+                            StrokeCap = SKStrokeCap.Butt,
+                            MaskFilter = SKMaskFilter.CreateBlur(SKBlurStyle.Normal, 2)
+                        };
+                        canvas.DrawLine(x - 1, y, x + barWidth + 1, y, bloomPaint);
+                    }
+                    else if (isPeak)
+                    {
+                        var color = ApplyBrightness(bandColor);
+                        using var paint = new SKPaint
+                        {
+                            IsAntialias = true,
+                            Color = color,
+                            StrokeWidth = lineThickness,
+                            StrokeCap = SKStrokeCap.Butt
+                        };
+                        canvas.DrawLine(x, y, x + barWidth, y, paint);
+                    }
+                    else
+                    {
+                        // Dim ghost line
+                        using var paint = new SKPaint
+                        {
+                            IsAntialias = true,
+                            Color = ApplyBrightness(bandColor).WithAlpha(12),
+                            StrokeWidth = lineThickness * 0.6f,
+                            StrokeCap = SKStrokeCap.Butt
+                        };
+                        canvas.DrawLine(x, y, x + barWidth, y, paint);
+                    }
+                }
+            }
+        }
+
+        private static SKColor LerpColor(SKColor a, SKColor b, float t)
+        {
+            return new SKColor(
+                (byte)(a.Red + (b.Red - a.Red) * t),
+                (byte)(a.Green + (b.Green - a.Green) * t),
+                (byte)(a.Blue + (b.Blue - a.Blue) * t),
+                (byte)(a.Alpha + (b.Alpha - a.Alpha) * t));
+        }
+
         private void DrawVfd(SKCanvas canvas, float[] bands, float[] peaks, float width, float height, VfdColorMode colorMode = VfdColorMode.Cyan)
         {
             // VFD phosphor colors per mode
@@ -611,6 +711,12 @@ namespace InfoPanel.AudioSpectrum
                     vfdBright = new SKColor(0, 230, 190);
                     vfdDim = new SKColor(0, 230, 190, 12);
                     vfdGlow = new SKColor(0, 180, 150, 8);
+                    vfdRed = new SKColor(255, 40, 30);
+                    break;
+                case VfdColorMode.OrangeRed:
+                    vfdBright = new SKColor(255, 160, 20);
+                    vfdDim = new SKColor(255, 160, 20, 12);
+                    vfdGlow = new SKColor(200, 120, 10, 8);
                     vfdRed = new SKColor(255, 40, 30);
                     break;
                 default: // Cyan
@@ -640,7 +746,7 @@ namespace InfoPanel.AudioSpectrum
             };
 
             // Threshold for red zone in Classic mode (top 1/3)
-            float redThreshold = colorMode == VfdColorMode.Classic ? 1f / 3f : float.MaxValue;
+            float redThreshold = (colorMode == VfdColorMode.Classic || colorMode == VfdColorMode.OrangeRed) ? 1f / 3f : float.MaxValue;
 
             for (int i = 0; i < count; i++)
             {
