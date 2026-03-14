@@ -70,7 +70,7 @@ namespace InfoPanel.AudioSpectrum
             };
 
             // Start HTTP server
-            _server = new SpectrumServer(_config.ServerPort, _config.ImageWidth, _config.ImageHeight);
+            _server = new SpectrumServer(_config.ServerPort, _config.ImageWidth, _config.ImageHeight, fps: 30);
             _server.Start();
 
             // Render initial blank frame
@@ -178,7 +178,7 @@ namespace InfoPanel.AudioSpectrum
                 if (_audioLevelSensor != null) _audioLevelSensor.Value = MathF.Round(_capture.PeakLevel * 100, 2);
                 if (_dataCountSensor != null) _dataCountSensor.Value = _capture.DataReceivedCount;
 
-                // Render and push to HTTP server (MJPEG stream)
+                // Render and push to HTTP server
                 var imageData = _renderer.Render(bands, peaks, _config.ImageWidth, _config.ImageHeight);
                 if (imageData != null)
                 {

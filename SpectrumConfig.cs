@@ -35,7 +35,7 @@ namespace InfoPanel.AudioSpectrum
         public bool ShowReflection { get; set; } = false;
         public bool ShowMirror { get; set; } = false;
         public float Brightness { get; set; } = 1.0f;
-        public float Smoothing { get; set; } = 0.3f;
+        public float Smoothing { get; set; } = 0.05f;
         public float PeakDecay { get; set; } = 0.02f;
         public SpectrumAlignment Alignment { get; set; } = SpectrumAlignment.Left;
         public float ContentWidth { get; set; } = 1.0f;
@@ -79,7 +79,7 @@ namespace InfoPanel.AudioSpectrum
             SetDefault("ShowReflection", "false");
             SetDefault("ShowMirror", "false");
             SetDefault("Brightness", "1.0");
-            SetDefault("Smoothing", "0.3");
+            SetDefault("Smoothing", "0.05");
             SetDefault("PeakDecay", "0.02");
             SetDefault("Alignment", "Left");
             SetDefault("ContentWidth", "1.0");
@@ -149,7 +149,7 @@ namespace InfoPanel.AudioSpectrum
             ShowReflection = GetBool("ShowReflection", false);
             ShowMirror = GetBool("ShowMirror", false);
             Brightness = GetFloat("Brightness", 1.0f);
-            Smoothing = GetFloat("Smoothing", 0.3f);
+            Smoothing = GetFloat("Smoothing", 0.05f);
             PeakDecay = GetFloat("PeakDecay", 0.02f);
             Alignment = GetEnum("Alignment", SpectrumAlignment.Left);
             ContentWidth = GetFloat("ContentWidth", 1.0f);

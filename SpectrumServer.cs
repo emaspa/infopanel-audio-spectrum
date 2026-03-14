@@ -42,14 +42,18 @@ namespace InfoPanel.AudioSpectrum
         {
             _cts = new CancellationTokenSource();
 
-            int[] ports = [_requestedPort, _requestedPort + 1, _requestedPort + 2, 0];
+            // Try preferred ports, then several random high ports
+            var ports = new List<int> { _requestedPort, _requestedPort + 1, _requestedPort + 2 };
+            var rng = new Random();
+            for (int i = 0; i < 10; i++)
+                ports.Add(rng.Next(49152, 65535));
 
             foreach (var port in ports)
             {
                 try
                 {
                     _listener = new HttpListener();
-                    _actualPort = port == 0 ? new Random().Next(49152, 65535) : port;
+                    _actualPort = port;
                     _listener.Prefixes.Add($"http://localhost:{_actualPort}/");
                     _listener.Start();
 
