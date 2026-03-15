@@ -34,7 +34,7 @@ namespace InfoPanel.AudioSpectrum
         }
 
         public override string? ConfigFilePath => SpectrumConfig.FilePath;
-        public override TimeSpan UpdateInterval => TimeSpan.FromMilliseconds(100); // ~10fps
+        public override TimeSpan UpdateInterval => TimeSpan.FromMilliseconds(33); // ~30fps
 
         public override void Initialize()
         {
