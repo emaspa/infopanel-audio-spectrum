@@ -296,7 +296,7 @@ namespace InfoPanel.AudioSpectrum
                 // Peak indicator
                 if (ShowPeaks && peaks[i] > 2)
                 {
-                    float peakY = height - (peaks[i] / 100f) * height;
+                    float peakY = MathF.Max(5, height - (peaks[i] / 100f) * height);
                     var peakColor = Scheme == ColorScheme.Classic
                         ? ApplyBrightness(new SKColor(255, 0, 0))
                         : ApplyBrightness(color).WithAlpha(200);
@@ -411,8 +411,8 @@ namespace InfoPanel.AudioSpectrum
             for (int i = 0; i < count; i++)
             {
                 float x = i * totalBarWidth + totalBarWidth / 2;
-                int activeDots = (int)(bands[i] / 100f * dotsPerColumn);
-                int peakDot = (int)(peaks[i] / 100f * dotsPerColumn);
+                int activeDots = Math.Min((int)(bands[i] / 100f * dotsPerColumn), dotsPerColumn - 2);
+                int peakDot = Math.Min((int)(peaks[i] / 100f * dotsPerColumn), dotsPerColumn - 2);
 
                 for (int d = 0; d < dotsPerColumn; d++)
                 {
@@ -496,7 +496,7 @@ namespace InfoPanel.AudioSpectrum
                 // Peak indicators
                 if (ShowPeaks && peaks[i] > 2)
                 {
-                    float peakOffset = (peaks[i] / 100f) * midY;
+                    float peakOffset = MathF.Min(peaks[i] / 100f, 1f) * (midY - 5);
                     using var peakPaint = new SKPaint
                     {
                         IsAntialias = true,
@@ -524,8 +524,8 @@ namespace InfoPanel.AudioSpectrum
             for (int i = 0; i < count; i++)
             {
                 float x = i * totalBarWidth + gap / 2;
-                int activeSegments = (int)(bands[i] / 100f * segmentsPerBar);
-                int peakSegment = (int)(peaks[i] / 100f * segmentsPerBar);
+                int activeSegments = Math.Min((int)(bands[i] / 100f * segmentsPerBar), segmentsPerBar - 2);
+                int peakSegment = Math.Min((int)(peaks[i] / 100f * segmentsPerBar), segmentsPerBar - 2);
 
                 for (int s = 0; s < segmentsPerBar; s++)
                 {
@@ -617,8 +617,8 @@ namespace InfoPanel.AudioSpectrum
             for (int i = 0; i < count; i++)
             {
                 float x = i * totalBarWidth + gap / 2;
-                int activeLines = (int)(bands[i] / 100f * linesPerBar);
-                int peakLine = (int)(peaks[i] / 100f * linesPerBar);
+                int activeLines = Math.Min((int)(bands[i] / 100f * linesPerBar), linesPerBar - 2);
+                int peakLine = Math.Min((int)(peaks[i] / 100f * linesPerBar), linesPerBar - 2);
                 var bandColor = GetBandColor(i, count, bands[i] / 100f);
 
                 for (int s = 0; s < linesPerBar; s++)
@@ -751,8 +751,8 @@ namespace InfoPanel.AudioSpectrum
             for (int i = 0; i < count; i++)
             {
                 float x = i * totalBarWidth + gap / 2;
-                int activeLines = (int)(bands[i] / 100f * linesPerBar);
-                int peakLine = (int)(peaks[i] / 100f * linesPerBar);
+                int activeLines = Math.Min((int)(bands[i] / 100f * linesPerBar), linesPerBar - 2);
+                int peakLine = Math.Min((int)(peaks[i] / 100f * linesPerBar), linesPerBar - 2);
 
                 for (int s = 0; s < linesPerBar; s++)
                 {

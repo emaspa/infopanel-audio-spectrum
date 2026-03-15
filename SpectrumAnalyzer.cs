@@ -128,7 +128,7 @@ namespace InfoPanel.AudioSpectrum
                 // Peak hold with decay - track raw (pre-smoothing) value so peaks shoot above bars
                 if (normalized > _peakBands[band])
                 {
-                    _peakBands[band] = normalized;
+                    _peakBands[band] = MathF.Min(100, normalized);
                 }
                 else
                 {
