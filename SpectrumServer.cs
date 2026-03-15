@@ -35,7 +35,7 @@ namespace InfoPanel.AudioSpectrum
         }
 
         public string? ImageUrl => _listener?.IsListening == true
-            ? $"http://localhost:{_actualPort}/spectrum.avi"
+            ? $"http://localhost:{_actualPort}/spectrum.jpeg"
             : null;
 
         public void Start()
