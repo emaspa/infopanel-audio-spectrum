@@ -42,9 +42,6 @@ namespace InfoPanel.AudioSpectrum
 
     internal class SpectrumRenderer : IDisposable
     {
-        private SKBitmap? _bitmap;
-        private int _width;
-        private int _height;
         private bool _disposed;
 
         public SpectrumStyle Style { get; set; } = SpectrumStyle.Bars;
@@ -65,19 +62,20 @@ namespace InfoPanel.AudioSpectrum
         public float NoiseFloor { get; set; } = 0f; // 0-1, fraction of average used as minimum band level
         public int TrimBands { get; set; } = 0; // number of bands to cut from each side
 
-        public byte[]? Render(float[] bands, float[] peaks, int width, int height)
+        /// <summary>
+        /// Renders the spectrum directly onto an externally-provided bitmap (e.g. shared memory).
+        /// </summary>
+        public void RenderToBitmap(float[] bands, float[] peaks, SKBitmap target)
         {
-            if (width <= 0 || height <= 0 || bands.Length == 0) return null;
+            if (target == null || bands.Length == 0) return;
+            RenderCore(target, bands, peaks, target.Width, target.Height);
+        }
 
-            if (_bitmap == null || _width != width || _height != height)
-            {
-                _bitmap?.Dispose();
-                _width = width;
-                _height = height;
-                _bitmap = new SKBitmap(width, height, SKColorType.Rgba8888, SKAlphaType.Premul);
-            }
+        private void RenderCore(SKBitmap bitmap, float[] bands, float[] peaks, int width, int height)
+        {
+            if (width <= 0 || height <= 0 || bands.Length == 0) return;
 
-            using var canvas = new SKCanvas(_bitmap);
+            using var canvas = new SKCanvas(bitmap);
             canvas.Clear(BackgroundColor);
 
             // Calculate content area and alignment offset
@@ -183,21 +181,17 @@ namespace InfoPanel.AudioSpectrum
 
             if (ShowMirror && Style != SpectrumStyle.Mirror)
             {
-                DrawMirrorReflection(canvas, contentW, drawHeight, height);
+                DrawMirrorReflection(canvas, bitmap, contentW, drawHeight, height);
             }
             else if (ShowReflection && Style != SpectrumStyle.Mirror)
             {
-                DrawReflection(canvas, contentW, drawHeight, height);
+                DrawReflection(canvas, bitmap, contentW, drawHeight, height);
             }
 
             if (offsetX != 0)
             {
                 canvas.Restore();
             }
-
-            using var image = SKImage.FromBitmap(_bitmap);
-            using var data = image.Encode(SKEncodedImageFormat.Jpeg, 90);
-            return data.ToArray();
         }
 
         private void DrawBars(SKCanvas canvas, float[] bands, float[] peaks, float width, float height, bool rounded)
@@ -1097,7 +1091,7 @@ namespace InfoPanel.AudioSpectrum
             }
         }
 
-        private void DrawReflection(SKCanvas canvas, float width, float mainHeight, float totalHeight)
+        private void DrawReflection(SKCanvas canvas, SKBitmap bitmap, float width, float mainHeight, float totalHeight)
         {
             float reflectionHeight = totalHeight - mainHeight;
 
@@ -1108,7 +1102,7 @@ namespace InfoPanel.AudioSpectrum
             // Read pixels from the main area
             var info = new SKImageInfo((int)width, (int)mainHeight);
             using var mainPixels = new SKBitmap(info);
-            _bitmap!.ExtractSubset(mainPixels, new SKRectI(0, 0, (int)width, (int)mainHeight));
+            bitmap.ExtractSubset(mainPixels, new SKRectI(0, 0, (int)width, (int)mainHeight));
 
             // Draw flipped
             snapshotCanvas.Save();
@@ -1147,14 +1141,14 @@ namespace InfoPanel.AudioSpectrum
             canvas.DrawRect(0, mainHeight, width, reflectionHeight, fadePaint);
         }
 
-        private void DrawMirrorReflection(SKCanvas canvas, float width, float mainHeight, float totalHeight)
+        private void DrawMirrorReflection(SKCanvas canvas, SKBitmap bitmap, float width, float mainHeight, float totalHeight)
         {
             float mirrorHeight = totalHeight - mainHeight;
 
             // Extract the main area pixels
             var info = new SKImageInfo((int)width, (int)mainHeight);
             using var mainPixels = new SKBitmap(info);
-            _bitmap!.ExtractSubset(mainPixels, new SKRectI(0, 0, (int)width, (int)mainHeight));
+            bitmap.ExtractSubset(mainPixels, new SKRectI(0, 0, (int)width, (int)mainHeight));
 
             // Draw flipped 1:1 copy below
             canvas.Save();
@@ -1301,7 +1295,6 @@ namespace InfoPanel.AudioSpectrum
             if (!_disposed)
             {
                 _disposed = true;
-                _bitmap?.Dispose();
             }
         }
     }

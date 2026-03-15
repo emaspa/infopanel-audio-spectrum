@@ -1,10 +1,12 @@
 using InfoPanel.Plugins;
+using InfoPanel.Plugins.Graphics;
 using Serilog;
+using SkiaSharp;
 using System.Diagnostics;
 
 namespace InfoPanel.AudioSpectrum
 {
-    public class AudioSpectrumPlugin : BasePlugin, IPluginConfigurable
+    public class AudioSpectrumPlugin : BasePlugin, IPluginConfigurable, IPluginImageProvider
     {
         private static readonly ILogger Logger = Log.ForContext<AudioSpectrumPlugin>();
 
@@ -15,15 +17,15 @@ namespace InfoPanel.AudioSpectrum
         private AudioCapture? _capture;
         private SpectrumAnalyzer? _analyzer;
         private SpectrumRenderer? _renderer;
-        private SpectrumServer? _server;
         private WaveLinkClient? _waveLinkClient;
+
+        private IPluginImageWriter? _spectrumWriter;
 
         private PluginSensor[] _bandSensors = [];
         private PluginSensor? _peakSensor;
         private PluginSensor? _averageSensor;
         private PluginSensor? _audioLevelSensor;
         private PluginSensor? _dataCountSensor;
-        private PluginText? _spectrumImage;
         private PluginText? _deviceText;
 
         public AudioSpectrumPlugin() : base(
@@ -69,21 +71,8 @@ namespace InfoPanel.AudioSpectrum
                 TrimBands = _config.TrimBands
             };
 
-            // Start HTTP server
-            _server = new SpectrumServer(_config.ServerPort, _config.ImageWidth, _config.ImageHeight, fps: 30);
-            _server.Start();
-
-            // Render initial blank frame
-            var initial = _renderer.Render(new float[_config.BandCount], new float[_config.BandCount],
-                _config.ImageWidth, _config.ImageHeight);
-            if (initial != null) _server.SetImageData(initial);
-
             // Create containers and sensors
             var spectrumContainer = new PluginContainer("Spectrum");
-
-            // The URL sensor - user adds this as Http Image (MJPEG stream for real-time)
-            _spectrumImage = new PluginText("spectrum-image", "Spectrum Image", _server.ImageUrl ?? "");
-            spectrumContainer.Entries.Add(_spectrumImage);
 
             _peakSensor = new PluginSensor("peak", "Peak Level", 0, "%");
             _averageSensor = new PluginSensor("average", "Average Level", 0, "%");
@@ -122,9 +111,24 @@ namespace InfoPanel.AudioSpectrum
                 Logger.Information("Wave Link follow mode enabled");
             }
 
-            Logger.Information("AudioSpectrum initialized: {Bands} bands, {W}x{H}, style={Style}, url={Url}",
-                _config.BandCount, _config.ImageWidth, _config.ImageHeight, _config.Style, _server.ImageUrl);
+            Logger.Information("AudioSpectrum initialized: {Bands} bands, {W}x{H}, style={Style}",
+                _config.BandCount, _config.ImageWidth, _config.ImageHeight, _config.Style);
         }
+
+        #region IPluginImageProvider
+
+        public IReadOnlyList<PluginImageDescriptor> ImageDescriptors =>
+        [
+            new("spectrum", "Spectrum", _config.ImageWidth, _config.ImageHeight)
+        ];
+
+        public void OnImageBuffersReady(IReadOnlyDictionary<string, IPluginImageWriter> writers)
+        {
+            _spectrumWriter = writers["spectrum"];
+            Logger.Information("Image buffer ready: {W}x{H}", _spectrumWriter.Width, _spectrumWriter.Height);
+        }
+
+        #endregion
 
         public override void Close()
         {
@@ -132,11 +136,10 @@ namespace InfoPanel.AudioSpectrum
             _waveLinkClient = null;
             _capture?.Dispose();
             _renderer?.Dispose();
-            _server?.Dispose();
             _capture = null;
             _renderer = null;
-            _server = null;
             _analyzer = null;
+            _spectrumWriter = null;
 
             Logger.Information("AudioSpectrum closed");
         }
@@ -154,7 +157,7 @@ namespace InfoPanel.AudioSpectrum
 
         public override void Update()
         {
-            if (_capture == null || _analyzer == null || _renderer == null || _server == null) return;
+            if (_capture == null || _analyzer == null || _renderer == null) return;
 
             try
             {
@@ -178,11 +181,11 @@ namespace InfoPanel.AudioSpectrum
                 if (_audioLevelSensor != null) _audioLevelSensor.Value = MathF.Round(_capture.PeakLevel * 100, 2);
                 if (_dataCountSensor != null) _dataCountSensor.Value = _capture.DataReceivedCount;
 
-                // Render and push to HTTP server
-                var imageData = _renderer.Render(bands, peaks, _config.ImageWidth, _config.ImageHeight);
-                if (imageData != null)
+                // Render directly onto shared memory bitmap
+                if (_spectrumWriter != null)
                 {
-                    _server.SetImageData(imageData);
+                    _renderer.RenderToBitmap(bands, peaks, _spectrumWriter.Bitmap);
+                    _spectrumWriter.Invalidate();
                 }
             }
             catch (Exception ex)
@@ -339,10 +342,18 @@ namespace InfoPanel.AudioSpectrum
                     if (value is int bc) { _config.BandCount = Math.Clamp(bc, 8, 128); }
                     break;
                 case "ImageWidth":
-                    if (value is int iw) { _config.ImageWidth = Math.Clamp(iw, 100, 3840); }
+                    if (value is int iw)
+                    {
+                        _config.ImageWidth = Math.Clamp(iw, 100, 3840);
+                        _spectrumWriter?.Resize(_config.ImageWidth, _config.ImageHeight);
+                    }
                     break;
                 case "ImageHeight":
-                    if (value is int ih) { _config.ImageHeight = Math.Clamp(ih, 50, 2160); }
+                    if (value is int ih)
+                    {
+                        _config.ImageHeight = Math.Clamp(ih, 50, 2160);
+                        _spectrumWriter?.Resize(_config.ImageWidth, _config.ImageHeight);
+                    }
                     break;
                 case "AudioDevice":
                     if (value is string device)

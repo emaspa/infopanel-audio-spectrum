@@ -44,8 +44,6 @@ namespace InfoPanel.AudioSpectrum
         public float EdgeBoost { get; set; } = 5f;
         public float NoiseFloor { get; set; } = 0f;
         public int TrimBands { get; set; } = 0;
-        public int ServerPort { get; set; } = 52400;
-        public int RefreshIntervalMs { get; set; } = 5000;
         public bool FollowWaveLink { get; set; } = false;
 
         public void Load()
@@ -88,8 +86,6 @@ namespace InfoPanel.AudioSpectrum
             SetDefault("EdgeBoost", "5");
             SetDefault("NoiseFloor", "0");
             SetDefault("TrimBands", "0");
-            SetDefault("ServerPort", "52400");
-            SetDefault("RefreshIntervalMs", "5000");
             SetDefault("FollowWaveLink", "false");
 
             // Write available audio devices as comments
@@ -158,8 +154,6 @@ namespace InfoPanel.AudioSpectrum
             EdgeBoost = GetFloat("EdgeBoost", 5f);
             NoiseFloor = GetFloat("NoiseFloor", 0f);
             TrimBands = GetInt("TrimBands", 0);
-            ServerPort = GetInt("ServerPort", 52400);
-            RefreshIntervalMs = GetInt("RefreshIntervalMs", 5000);
             FollowWaveLink = GetBool("FollowWaveLink", false);
 
             // Clamp values
@@ -176,8 +170,7 @@ namespace InfoPanel.AudioSpectrum
             EdgeBoost = Math.Clamp(EdgeBoost, 1f, 15f);
             NoiseFloor = Math.Clamp(NoiseFloor, 0f, 1f);
             TrimBands = Math.Clamp(TrimBands, 0, 20);
-            ServerPort = Math.Clamp(ServerPort, 1024, 65535);
-            RefreshIntervalMs = Math.Clamp(RefreshIntervalMs, 1000, 60000);
+
         }
 
         private int GetInt(string key, int defaultValue)
@@ -238,8 +231,6 @@ namespace InfoPanel.AudioSpectrum
             _iniData[SECTION]["EdgeBoost"] = EdgeBoost.ToString(System.Globalization.CultureInfo.InvariantCulture);
             _iniData[SECTION]["NoiseFloor"] = NoiseFloor.ToString(System.Globalization.CultureInfo.InvariantCulture);
             _iniData[SECTION]["TrimBands"] = TrimBands.ToString();
-            _iniData[SECTION]["ServerPort"] = ServerPort.ToString();
-            _iniData[SECTION]["RefreshIntervalMs"] = RefreshIntervalMs.ToString();
             _iniData[SECTION]["FollowWaveLink"] = FollowWaveLink.ToString().ToLower();
 
             var parser = new FileIniDataParser();
