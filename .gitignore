@@ -3,3 +3,4 @@ obj/
 *.user
 *.suo
 .vs/
+test_wavelink.ps1
