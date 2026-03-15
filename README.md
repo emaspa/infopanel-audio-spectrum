@@ -2,6 +2,8 @@
 
 A real-time audio spectrum visualizer plugin for [InfoPanel](https://github.com/habibrehmansg/infopanel). Captures your system audio output and renders a customizable spectrum visualization that you can display on your USB LCD panel or desktop overlay.
 
+> **Requires InfoPanel 1.4.x** with plugin image support. v2.0.0+ uses shared memory rendering and will not work with older InfoPanel versions.
+
 | Rounded + Neon + CenterOut | Classic + CenterOut + Reflection |
 |:---:|:---:|
 | ![Neon Rounded](screenshots/neon-rounded.png) | ![Classic CenterOut](screenshots/classic-centerout.png) |
@@ -16,12 +18,12 @@ A real-time audio spectrum visualizer plugin for [InfoPanel](https://github.com/
 
 ## How It Works
 
-The plugin captures your PC's audio output (whatever you hear through your speakers/headphones) using Windows WASAPI loopback, runs it through a 4096-point FFT to extract frequency data, and renders a spectrum visualization as a JPEG image stream. InfoPanel picks up the stream via a local HTTP URL and displays it as a live image on your panel.
+The plugin captures your PC's audio output (whatever you hear through your speakers/headphones) using Windows WASAPI loopback, runs it through a 4096-point FFT to extract frequency data, and renders a spectrum visualization directly onto a shared memory bitmap. InfoPanel reads the bitmap at full frame rate with zero-copy transfer.
 
 **Data flow:**
 
 ```
-System Audio -> WASAPI Loopback -> FFT Analysis -> Spectrum Rendering -> HTTP Server -> InfoPanel
+System Audio -> WASAPI Loopback -> FFT Analysis -> Spectrum Rendering -> Shared Memory -> InfoPanel
 ```
 
 The plugin also exposes per-band frequency sensors, peak level, and average level values that you can use in InfoPanel's sensor display items, gauges, or graphs.
@@ -46,7 +48,7 @@ See [Building from Source](#building-from-source) below.
 
 Once the plugin is running, it exposes:
 
-- **Spectrum Image** - A text sensor containing the MJPEG stream URL (e.g. `http://localhost:52400/spectrum.avi`)
+- **Spectrum Image** - A live image rendered directly to shared memory (shown as a Plugin Image in InfoPanel)
 - **Per-band frequency sensors** - Individual values for each frequency band (e.g. "63Hz", "250Hz", "4.0kHz")
 - **Peak Level** / **Average Level** - Overall spectrum intensity as percentages
 - **Audio Input Level** - Raw audio amplitude from the capture device
@@ -55,11 +57,8 @@ Once the plugin is running, it exposes:
 ### Adding the spectrum to your panel
 
 1. In your InfoPanel profile, add an **Image** display item
-2. Set the source to **Http Image**
-3. For the URL, use the value from the **Spectrum Image** sensor (shown in the Plugins page), typically:
-   ```
-   http://localhost:52400/spectrum.avi
-   ```
+2. Set the source to **Plugin Image**
+3. Select the **Spectrum Image** from the Audio Spectrum plugin
 4. Resize and position the image on your panel layout
 
 ### Using frequency sensors
@@ -94,8 +93,8 @@ CornerRadius = 4
 ShowPeaks = true
 ShowReflection = false
 Brightness = 1.0
-Smoothing = 0.3
-PeakDecay = 0.02
+Smoothing = 0.05
+PeakDecay = 0.007
 Alignment = Left
 ContentWidth = 1.0
 CenterOut = false
@@ -103,7 +102,6 @@ Gain = 1.5
 EdgeBoost = 5
 NoiseFloor = 0
 TrimBands = 0
-ServerPort = 52400
 FollowWaveLink = false
 ```
 
@@ -130,19 +128,20 @@ FollowWaveLink = false
 |---------|---------|-------|-------------|
 | `BandCount` | `32` | 8 - 128 | Number of frequency bands. More bands = finer frequency resolution but thinner bars. |
 | `Gain` | `1.5` | 0.5 - 5.0 | Multiplier applied to band values after FFT. Higher values make bars taller / more reactive. |
-| `Smoothing` | `0.3` | 0.05 - 0.95 | How much the bars smooth between frames. Lower = snappier response, higher = smoother motion. |
-| `PeakDecay` | `0.02` | 0.005 - 0.1 | How fast peak indicators fall after reaching their highest point. Lower = slower decay. |
+| `Smoothing` | `0.05` | 0.05 - 0.95 | How much the bars smooth between frames. Lower = snappier response, higher = smoother motion. |
+| `PeakDecay` | `0.007` | 0.005 - 0.1 | How fast peak indicators fall after reaching their highest point. Lower = slower decay. |
 
 #### Visual Style
 
 | Setting | Default | Values | Description |
 |---------|---------|--------|-------------|
-| `Style` | `Bars` | `Bars`, `Rounded`, `Wave`, `Dots`, `Mirror`, `VuMeter`, `VFD`, `AnalogVU` | Rendering style (see [Styles](#styles) below). |
+| `Style` | `Bars` | `Bars`, `Rounded`, `Wave`, `Dots`, `Mirror`, `VuMeter`, `Lines`, `VFD`, `VFDOrange`, `VFDClassic`, `VFDOrangeRed`, `AnalogVU` | Rendering style (see [Styles](#styles) below). |
 | `ColorScheme` | `Neon` | `Neon`, `Fire`, `FireInverted`, `Ice`, `Rainbow`, `Ocean`, `Monochrome`, `Classic`, `Custom` | Color scheme (see [Color Schemes](#color-schemes) below). |
 | `BarSpacing` | `0.3` | 0.0 - 0.8 | Gap between bars as a fraction of bar width. `0` = no gap, `0.5` = gap equal to bar width. |
 | `CornerRadius` | `4` | 0 - 20 | Corner rounding in pixels. Mainly affects the `Rounded` style. |
 | `ShowPeaks` | `true` | `true` / `false` | Show peak hold indicators that float above the bars and slowly decay. |
-| `ShowReflection` | `false` | `true` / `false` | Show a faded mirror reflection below the spectrum. |
+| `ShowReflection` | `false` | `true` / `false` | Show a faded mirror reflection below the spectrum. Mutually exclusive with ShowMirror. |
+| `ShowMirror` | `false` | `true` / `false` | Show a perfect 1:1 mirror reflection below the spectrum. Mutually exclusive with ShowReflection. |
 | `Brightness` | `1.0` | 0.1 - 2.0 | Overall brightness multiplier. Values above 1.0 make colors more vivid. |
 
 #### Layout
@@ -163,12 +162,6 @@ FollowWaveLink = false
 | `CustomColor1` | `#00FF80` | Hex color | Start color for the `Custom` color scheme gradient. |
 | `CustomColor2` | `#0080FF` | Hex color | End color for the `Custom` color scheme gradient. |
 
-#### Server
-
-| Setting | Default | Range | Description |
-|---------|---------|-------|-------------|
-| `ServerPort` | `52400` | 1024 - 65535 | HTTP server port. If the port is busy, the plugin tries the next two ports, then falls back to a random port. |
-
 ### Styles
 
 - **Bars** - Classic vertical bars with gradient coloring. Clean and readable.
@@ -177,7 +170,11 @@ FollowWaveLink = false
 - **Dots** - Matrix-style dot display with 16 dots per column. Active dots glow, inactive dots are dimmed.
 - **Mirror** - Bars extend both up and down from a center line, creating a symmetrical waveform effect.
 - **VuMeter** - LED-style segmented bars with green/yellow/red coloring (24 segments). Supports Fire/FireInverted vertical gradients.
-- **VFD** - Vacuum fluorescent display with thin horizontal scan lines, cyan-green phosphor glow, bloom effect, and dim ghost grid for inactive segments. Matches real VFD hardware.
+- **Lines** - VFD-style thin scan lines using the selected color scheme instead of hardcoded VFD colors.
+- **VFD** - Vacuum fluorescent display with thin horizontal scan lines, cyan-green phosphor glow, bloom effect, and dim ghost grid. Matches real VFD hardware.
+- **VFDOrange** - Amber phosphor variant of VFD.
+- **VFDClassic** - Cyan-green with red top zone (top 2/3 of bars), classic VFD look.
+- **VFDOrangeRed** - Orange phosphor with red peaks and top zone.
 - **AnalogVU** - Two classic analog needle VU meters (Peak + Average) with retro cream face, dark bezel, dB and percentage scales, peak hold needle, and clip LED indicator.
 
 ### Color Schemes
@@ -355,9 +352,9 @@ For more details, see the [InfoPanel plugin documentation](https://github.com/ha
 - **Audio capture**: WASAPI loopback via raw COM P/Invoke (no NAudio device capture, works in any .NET AssemblyLoadContext)
 - **FFT**: 4096-point FFT with Hann windowing via NAudio.Dsp
 - **Frequency mapping**: Logarithmic band spacing from 20 Hz to 20 kHz
-- **Rendering**: SkiaSharp (Skia) for all drawing, JPEG output at quality 90
-- **Streaming**: Minimal AVI/MJPEG HTTP server for real-time frame delivery
-- **Update rate**: ~10 FPS (100ms interval)
+- **Rendering**: SkiaSharp (Skia) for all drawing, direct shared memory bitmap output
+- **Image transfer**: Zero-copy shared memory via `IPluginImageProvider` / memory-mapped files
+- **Update rate**: ~30 FPS (33ms interval)
 
 ## Support
 
